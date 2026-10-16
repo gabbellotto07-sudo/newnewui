@@ -364,27 +364,30 @@ def wake(cv, cam, t):
 
 # ------------------------------------------------------------------ Seliu: one light along the real coast
 def coast_light(cv, cam, t):
+    """one light runs the real coastline once; what it has traced stays as a soft warm glow (no hard line),
+    which settles to ~30 % and breathes very slightly until the end"""
     c0, c1 = T["coast"]
-    if not (c0 < t < c1+0.8): return
+    if t <= c0: return
     k = cv.k
     proj = Proj(cam, cv.W, cv.H)
     p, ok = proj(OUTLINE)
     if ok.mean() < 0.98: return
     s = OUTLINE_S
     u = in_out_cubic(lin(t, c0, c1))
-    TAIL = 0.22
-    drain = smooth(lin(t, c1, c1+0.7))
-    a0 = max(0.0, u-TAIL+TAIL*drain)
-    if u-a0 < 1e-3: return
-    q, su = _partial(p, s, a0, u)
-    x = np.clip((su-(u-TAIL))/TAIL, 0, 1)
-    al = x**1.8*(1-drain)
-    cv.stroke(q, 2.6*k, al, np.array([1.0, 0.93, 0.80], np.float32), chunks=30)
-    for i in range(0, len(q)-1, 8):                       # the glow follows the fading tail
-        j = min(i+9, len(q)); cv.glow_poly(q[i:j], 6*k, GOLD, 0.9*float(al[i:j].mean()))
+    settle = smooth(lin(t, c1, c1+2.2))
+    breathe = 1+0.06*math.sin(2*math.pi*0.12*(t-c1))*settle
+    # what has been traced: a glow that is brighter just behind the head, then settles
+    q, su = _partial(p, s, 0.0, max(u, 1e-3))
+    if q is not None and len(q) > 1:
+        x = np.clip((su-(u-0.25))/0.25, 0, 1)
+        lvl = (0.45+0.55*x**1.5)*(1-settle)+0.42*settle
+        for i in range(0, len(q)-1, 8):
+            j = min(i+9, len(q)); a_ = float(lvl[i:j].mean())*breathe
+            cv.glow_poly(q[i:j], 6.0*k, GOLD, 1.0*a_)
+            cv.stroke(q[i:j], 1.6*k, np.full(j-i, 0.62*a_), np.array([1.0, 0.95, 0.86], np.float32), chunks=2)
     if u < 1:
-        cv.glow_dot(q[-1], 8*k, GOLD, 0.55)
-        cv.disc(q[-1], 2.0*k, 0.85, INK)
+        cv.glow_dot(q[-1], 10*k, GOLD, 0.8)
+        cv.disc(q[-1], 2.4*k, 0.95, INK)
 
 # ------------------------------------------------------------------ helpers
 def ll(key):

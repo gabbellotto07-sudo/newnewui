@@ -680,6 +680,7 @@ def main():
     ap.add_argument("--workers", type=int, default=1, help="forked workers sharing the textures")
     ap.add_argument("--clean", action="store_true", help="with --final: no graphics")
     ap.add_argument("--clean_dir", default=None, help="with --final: also write the no-text version here")
+    ap.add_argument("--raw_dir", default=None, help="with --final: also write the RAW plate (16-bit, no grade, no text, no grain) here")
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True)
     L = load_levels()
     if a.mode == "stills": jobs = [(None, t) for t in a.times]
@@ -714,6 +715,9 @@ def main():
         cp = TL.camera(t)
         rec = {"t": t, "frame": f, "camera": dict(zip(["lat", "lon", "range_m", "heading", "tilt", "roll"], cp)), "vfov": TL.VFOV,
                "alt_m": st.get("alt"), "subframes": len(offs), "sec": round(time.time()-t0, 1), "timing": {k: round(v, 2) for k, v in st.items() if k != "alt"}}
+        if a.final and a.raw_dir:
+            os.makedirs(a.raw_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(a.raw_dir, name+".png"), cv2.cvtColor((np.clip(img, 0, 1)*65535+0.5).astype(np.uint16), cv2.COLOR_RGB2BGR))
         if a.final:
             import grade_v9 as G, motion_gfx_v9 as M
             x = G.grade(img, t, matte)
