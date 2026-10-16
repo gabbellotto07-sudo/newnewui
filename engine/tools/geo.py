@@ -27,5 +27,6 @@ LEVELS = [
     ("LG", 3_600_000, 1800),
     ("L0", 1_700_000, 800),
     ("L1",   230_000, 100),
+    ("LM",    90_000,  15),     # v8: all of Belitung + the western cloud field at Sentinel-2 detail
     ("L2",    32_000,  10),
 ]
