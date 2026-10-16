@@ -1,0 +1,7 @@
+input/
+data/
+frames/
+*.npy
+*.exr
+/blender/
+__pycache__/
