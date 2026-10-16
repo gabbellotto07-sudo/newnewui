@@ -5,3 +5,4 @@ frames/
 *.exr
 /blender/
 __pycache__/
+engine/data
