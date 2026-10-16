@@ -36,6 +36,8 @@ tsurf = float(np.nanpercentile(t13[np.isfinite(t13) & (wmin < 0.08)], 75))
 cold = np.clip((tsurf-t13-2.5)/6.0, 0, 1)                 # a cloud is colder than the surface under it
 op = white*cold; op = op*op*(3-2*op)
 op = np.where(ok, op, 0).astype(np.float32)
+# v9: the cloud's own measured brightness (TOA reflectance, mean of the three visible bands), same instant and sun
+bright = np.where(ok, (b[0]+b[1]+b[2])/3, 0).astype(np.float32)
 print("surface 10.4 um temperature", round(tsurf, 1), "K")
 top = np.clip((tsurf-t13)/6.5, 0.6, 15.0)*1000.0
 top = np.where(op > 0.02, top, 0).astype(np.float32)
@@ -63,7 +65,8 @@ for lvl in sys.argv[1:]:
     acc = np.zeros(n*n, np.float64); cnt = np.zeros(n*n, np.float64); hac = np.zeros(n*n, np.float64)
     idx = ri*n+ci
     np.add.at(acc, idx, op[ok][inside]); np.add.at(hac, idx, top[ok][inside]*op[ok][inside]); np.add.at(cnt, idx, 1)
-    acc = acc.reshape(n, n); cnt = cnt.reshape(n, n); hac = hac.reshape(n, n)
+    bac = np.zeros(n*n, np.float64); np.add.at(bac, idx, bright[ok][inside]*op[ok][inside])
+    acc = acc.reshape(n, n); cnt = cnt.reshape(n, n); hac = hac.reshape(n, n); bac = bac.reshape(n, n)
     valid = cnt > 0
     A = np.where(valid, acc/np.maximum(cnt, 1), 0).astype(np.float32); Ht = np.where(acc > 0, hac/np.maximum(acc, 1e-6), 0).astype(np.float32)
     # fill the holes left by forward mapping (grid finer than the source) with a normalised blur
@@ -71,7 +74,10 @@ for lvl in sys.argv[1:]:
     wv = cv2.GaussianBlur(valid.astype(np.float32), (0, 0), k)
     A2 = cv2.GaussianBlur(A*valid, (0, 0), k)/np.maximum(wv, 1e-4)
     H2 = cv2.GaussianBlur(Ht*A*valid, (0, 0), k)/np.maximum(cv2.GaussianBlur(A*valid, (0, 0), k), 1e-4)
-    A = np.where(valid, A, A2); Ht = np.where(acc > 0, Ht, H2)
+    Bt = np.where(acc > 0, bac/np.maximum(acc, 1e-6), 0).astype(np.float32)
+    B2 = cv2.GaussianBlur(Bt*A*valid, (0, 0), k)/np.maximum(cv2.GaussianBlur(A*valid, (0, 0), k), 1e-4)
+    A = np.where(valid, A, A2); Ht = np.where(acc > 0, Ht, H2); Bt = np.where(acc > 0, Bt, B2)
+    np.save(os.path.join(ROOT, "data", f"{lvl}_hbright.npy"), Bt.astype(np.float16))
     np.save(os.path.join(ROOT, "data", f"{lvl}_hcloud.npy"), np.clip(A, 0, 1).astype(np.float16))
     np.save(os.path.join(ROOT, "data", f"{lvl}_htop.npy"), Ht.astype(np.float32))
     cv2.imwrite(os.path.join(ROOT, "review", f"{lvl}_hcloud.jpg"), (np.clip(A[::2, ::2], 0, 1)*255).astype(np.uint8))
