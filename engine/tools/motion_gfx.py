@@ -462,7 +462,7 @@ def draw(img, t, cam, fmt="16x9", cam_at=None):
 
     # ================= REGION: flights (2.3 - 9.3 s) =================================
     r_out0, r_out1 = T["region_out"]
-    if 2.0 < t < r_out1+0.6:
+    if T.get("region_in", 2.0) < t < r_out1+0.6:
         fade_region = 1-smooth(lin(t, r_out0+0.3, r_out1))
         _flight(cv, proj, ARC_SIN, t, *T["arc_sin"], r_out0, r_out1-0.1, 0)
         _flight(cv, proj, ARC_CGK, t, *T["arc_cgk"], r_out0+0.15, r_out1, 0)
@@ -500,7 +500,7 @@ def draw(img, t, cam, fmt="16x9", cam_at=None):
     tb, to = T["bel_title"], T["bel_out"]
     if tb-0.1 < t < to+1.0:
         # floats above the island at parallax 0.45 relative to the ground (a layer nearer the lens)
-        tref = 11.8
+        tref = T.get("bel_ref", 11.8)
         f = anchor_at("belitung_centre")
         p_now, p_ref = f(t), f(tref)
         if p_now is not None and p_ref is not None:
@@ -565,7 +565,7 @@ def draw(img, t, cam, fmt="16x9", cam_at=None):
             if ok.mean() < 0.98: return None
             ctr = pp.mean(0)
             return np.array([ctr[0], pp[:, 1].min()]) if not V else np.array([W/2, pp[:, 1].min()])
-        a_now, a_ref = title_anchor(t), title_anchor(22.0)
+        a_now, a_ref = title_anchor(t), title_anchor(T.get("seliu_ref", 22.0))
         if a_now is not None and a_ref is not None:
             pos = a_ref+0.75*(a_now-a_ref)                   # 0.75: a layer slightly above the ground
             gap = (150 if not V else 190)*k
@@ -586,7 +586,7 @@ def draw(img, t, cam, fmt="16x9", cam_at=None):
             vel = _velocity(anchor_at("teluk_gembira_pier"), t)
             if V: cv.text("TELUK GEMBIRA", p[0], p[1]+56*k, "place", t, T["tg_label"], None, align="c", vel=vel, opacity=ef)
             else: _side_label(cv, "TELUK GEMBIRA", p, t, T["tg_label"], None, vel, ef,
-                              p_ref=anchor_at("teluk_gembira_pier")(24.96))
+                              p_ref=anchor_at("teluk_gembira_pier")(T.get("tg_ref", 24.96)))
     r0, r1 = T["route"]
     if t > r0:
         p, ok = proj(ROUTE)

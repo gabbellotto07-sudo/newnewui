@@ -443,7 +443,7 @@ def main():
         rec = {"t": t, "frame": f, "camera": dict(zip(["lat", "lon", "range_m", "heading", "tilt", "roll"], cp)), "vfov": TL.VFOV,
                "alt_m": st.get("alt"), "subframes": len(offs), "sec": round(time.time()-t0, 1), "timing": {k: round(v, 2) for k, v in st.items() if k != "alt"}}
         if a.final:
-            import grade_v8 as G, motion_gfx as M
+            import grade_v8 as G, motion_gfx_v8 as M
             x = G.grade(img, t, matte)
             if not a.clean:
                 x = M.draw(x, t, cam_at(t, a.w, a.h), fmt=TL.FMT)

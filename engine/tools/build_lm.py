@@ -18,10 +18,15 @@ Ds = [np.load(f"data/LM_{d}.npy", mmap_mode="r") for d in land_ds]
 CLOUD = [0, 1, 2, 3, 8, 9, 10, 11]          # no data, saturated, dark/shadow, cloud shadow, clouds, cirrus, snow
 
 # ---------------------------------------------------------------- land mask (votes over all dates) + land median
+CACHE = "data/LM_landmedian.npz"
 votes_land = np.zeros((n, n), np.int16); votes_water = np.zeros((n, n), np.int16)
 land_rgb = np.zeros((3, n, n), np.float32); nobs = np.zeros((n, n), np.int16)
 S = 400
-for r0 in range(0, n, S):
+cached = os.path.exists(CACHE)
+if cached:
+    z = np.load(CACHE); land_rgb = z["rgb"].astype(np.float32); nobs = z["nobs"]; votes_land = z["vl"]; votes_water = z["vw"]; del z
+    print("land median from cache", flush=True)
+for r0 in (range(0, n, S) if not cached else []):
     sl = slice(r0, min(n, r0+S))
     stack = []; oks = []
     for A in Ds+[H]:
@@ -37,7 +42,10 @@ for r0 in range(0, n, S):
         land_rgb[:, sl] = np.nan_to_num(np.nanmedian(st, axis=0))
     nobs[sl] = np.sum(oks, axis=0)
     print("land rows", r0, flush=True)
+if not cached:
+    np.savez(CACHE, rgb=land_rgb.astype(np.float16), nobs=nobs, vl=votes_land, vw=votes_water)
 land = votes_land > votes_water
+del votes_land, votes_water
 land = cv2.morphologyEx(land.astype(np.uint8), cv2.MORPH_OPEN, K(1)).astype(bool)
 
 def pushpull(img, valid):
