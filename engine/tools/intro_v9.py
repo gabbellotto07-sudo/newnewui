@@ -25,9 +25,10 @@ import grade_v9 as G
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 W, H, FPS = 1920, 1080, 25
 T0 = 5.6                                   # intro time of the flight's t=0
-PAN0, PAN1 = 3.95, 5.6
-YAW0, PITCH0 = -120.0, 6.0                 # the hold looks this far left of (and above) where the flight looks
-LAUNCH, SPEED = 3.1, 100.0                 # star launch time, cruise speed (u/s); start 60 u ahead
+PAN1 = 5.6                                 # (PAN0 follows the star's exit, below)
+YAW0, PITCH0 = -72.0, 6.0                  # the hold looks this far left of (and above) where the flight looks
+LAUNCH, SPEED, Z0 = 3.1, 55.0, 30.0        # star launch time, cruise speed (u/s), start depth (u)
+PAN0 = 3.76                                # two frames after the star leaves the frame (T_EXIT, checked below)
 VFOV = R.TL.VFOV
 IVORY = np.array([0xF5, 0xEF, 0xE6], np.float32)/255
 GOLDB = np.array([0xC9, 0xA6, 0x6B], np.float32)/255
@@ -78,7 +79,7 @@ def pose(tau):
     tb = -(PAN1-PAN0)+(PAN1-PAN0)*(2*u*u-u**3)        # the flight's clock eases in, matched at u = 1
     if tau >= PAN1: tb = tau-T0
     pos, Mf = flight_pose(tb)
-    s = float(betainc(2.2, 4.0, u))
+    s = float(betainc(1.6, 4.0, u))
     off = _slerp([s])[0]*local(roll=bank(u)+flinch(tau))
     return pos, Mf@off.as_matrix()
 
@@ -92,22 +93,41 @@ def _local_dir(sx, sy, Mx):
     v = Mx@np.array([x, y, 1.0]); return v/np.linalg.norm(v)
 
 def _phys(tau):
-    """straight flight toward the lens: start 60 u ahead behind the rose, pass at (5, -1.5, 0) in the hold frame"""
-    d0 = _ph.T@_local_dir(CX, CY, _ph)*60/(_ph.T@_local_dir(CX, CY, _ph))[2]
+    """straight flight toward the lens: start Z0 ahead behind the rose, pass at (5, -1.5, 0) in the hold frame"""
+    d0 = _ph.T@_local_dir(CX, CY, _ph)*Z0/(_ph.T@_local_dir(CX, CY, _ph))[2]
     p1 = np.array([5.0, -1.5, 0.0]); L = np.linalg.norm(p1-d0); e = (p1-d0)/L
-    t = max(tau-LAUNCH, 0.0); ta = 0.3
+    t = max(tau-LAUNCH, 0.0); ta = 0.18
     s = SPEED*t**4/(4*ta**3) if t < ta else SPEED*ta/4+SPEED*(t-ta)
     return d0+e*s                                          # hold-local coordinates
 
-T_EXIT = 3.86
+def size_near(d): return 70.0*(Z0/max(d, 0.5))**1.4          # ray length (px): a touch faster than 1/d, for the rush
+
+def _exit_time():
+    for tau in np.arange(LAUNCH, LAUNCH+2.0, 0.01):
+        q = _phys(tau)
+        if q[2] <= 0.3: return tau
+        x = W/2*(1+q[0]/q[2]/math.tan(math.radians(VFOV/2))/(W/H)); y = H/2*(1-q[1]/q[2]/math.tan(math.radians(VFOV/2)))
+        r = 0.25*size_near(np.linalg.norm(q))
+        if x-r > W or y-r > H: return tau
+    return LAUNCH+1.0
+T_EXIT = round(float(_exit_time()), 2)
+assert abs(PAN0-(T_EXIT+0.08)) < 0.011, (T_EXIT, PAN0)       # the operator reacts two frames late
 def _yp(v):  return math.atan2(v[0], v[2]), math.asin(np.clip(v[1]/np.linalg.norm(v), -1, 1))
 def _key_dir(tau, sx, sy):
     p, Mx = pose(tau) if tau < PAN1 else flight_pose(tau-T0)
     return _ph.T@_local_dir(sx, sy, Mx)
 
-_keys = [(t, _phys(t)/np.linalg.norm(_phys(t))) for t in (3.70, 3.78, T_EXIT)]
-_keys += [(PAN0+0.55*(PAN1-PAN0), _key_dir(PAN0+0.55*(PAN1-PAN0), 0.965*W, 0.30*H)),
-          (T0, _key_dir(T0, 0.74*W, 0.165*H)), (T0+0.8, _key_dir(T0+0.8, 0.54*W, 0.215*H))]
+# after the pass the star bends round and becomes a shooting star crossing the sky above the flight's first view
+# at a steady speed: a straight screen line in the flight's t=0 frame (so its trail keeps one length)
+_Mref = flight_pose(0.0)[1]
+def _to_ref(v):                                              # world direction -> screen of the flight's t=0 frame
+    z = v@_Mref[:, 2]; return np.array([W/2*(1+(v@_Mref[:, 0])/z/(math.tan(math.radians(VFOV/2))*W/H)), H/2*(1-(v@_Mref[:, 1])/z/math.tan(math.radians(VFOV/2)))])
+TA, TB = 4.95, 6.4                                           # re-acquired at the top right of the turning frame at TA
+SA, SB = _to_ref(_local_dir(0.97*W, 0.12*H, pose(TA)[1])), np.array([0.40*W, 0.24*H])
+def _sky(tau):
+    q = SA+(SB-SA)*(tau-TA)/(TB-TA); return _ph.T@_local_dir(q[0], q[1], _Mref)
+_keys = [(t, _phys(t)/np.linalg.norm(_phys(t))) for t in (T_EXIT-0.08, T_EXIT-0.04, T_EXIT)]
+_keys += [(t, _sky(t)) for t in (TA, TA+0.1, TA+0.2)]
 _kt = np.array([k[0] for k in _keys]); _kyp = np.array([_yp(k[1]) for k in _keys])
 _kyp[:, 0] = np.unwrap(_kyp[:, 0])
 _fy, _fp = PchipInterpolator(_kt, _kyp[:, 0]), PchipInterpolator(_kt, _kyp[:, 1])
@@ -116,8 +136,11 @@ def star3d(tau):
     """-> world direction from the camera, distance (u)"""
     if tau <= T_EXIT:
         q = _phys(tau); d = np.linalg.norm(q); return _ph@(q/d), d
-    y, p = float(_fy(tau)), float(_fp(tau))
-    v = np.array([math.sin(y)*math.cos(p), math.sin(p), math.cos(y)*math.cos(p)])
+    if tau >= TA:
+        v = _sky(tau)
+    else:
+        y, p = float(_fy(tau)), float(_fp(tau))
+        v = np.array([math.sin(y)*math.cos(p), math.sin(p), math.cos(y)*math.cos(p)])
     d = np.linalg.norm(_phys(T_EXIT))+SPEED*0.9*(tau-T_EXIT)
     return _ph@v, d
 
@@ -141,17 +164,17 @@ def ring_mask(px):
     r = np.hypot(xx-(px-1)/2, yy-(px-1)/2)/(px/2)
     return np.clip((r-0.86)/0.04, 0, 1)
 
-def star_sprite(size, rot, core=1.0, rays=1.0):
+def star_sprite(size, rot, core=1.0, rays=1.0, cr=0.10, hr=0.35):
     """the eight-ray star (the rose's own eight points): long N/E/S/W rays, shorter diagonals, soft core"""
     n = int(size*2.2)|1; c = n//2
     yy, xx = np.mgrid[0:n, 0:n].astype(np.float32)-c
     r = np.hypot(xx, yy)+1e-3; th = np.arctan2(yy, xx)-math.radians(rot)
-    img = core*np.exp(-(r/(0.10*size+0.6))**2)+0.35*core*np.exp(-(r/(0.35*size+1.0))**2)
+    img = core*np.exp(-(r/(cr*size+0.6))**2)+0.35*core*np.exp(-(r/(hr*size+1.0))**2)
     if rays > 0:
         for k in range(8):
             a = k*math.pi/4; L = size*(1.0 if k % 2 == 0 else 0.55)
-            d = np.abs(np.sin(th-a))*r; along = np.cos(th-a)*r; wr = max(0.9, 0.009*size)
-            img += rays*0.75*np.exp(-(d/wr)**2)*np.clip(1-along/L, 0, 1)**2*(along > 0)
+            d = np.abs(np.sin(th-a))*r; along = np.cos(th-a)*r; wr = max(1.0, 0.007*size)
+            img += rays*0.95*np.exp(-(d/wr)**2)*np.clip(1-along/L, 0, 1)**2*(along > 0)
     return np.clip(img, 0, 1.5)
 
 def add_sprite(img, spr, x, y, color, gain=1.0, blur_vec=(0, 0), defocus=0.0):
@@ -214,7 +237,7 @@ def earth_plate(tau):
     img, matte = R.render_frame(0.0, L_, Ww, Hw, ss, cam=wide, want_matte=True)
     wide_px = Cam(cc.pos, basis(cc), Ww, Hw, math.degrees(2*hv)); wide_px.tanh = math.tan(hh)
     px_per_deg = H/VFOV
-    N = int(np.clip(math.ceil(sweep*px_per_deg/2.0), 1, 40))
+    N = int(np.clip(math.ceil(sweep*px_per_deg/1.2), 1, 64))
     acc = np.zeros((H, W, 3), np.float32); mt = None
     for k in range(N):
         tk = tau+dt*((k+0.5)/N-0.5)
@@ -243,28 +266,21 @@ def logo_layer(img, tau):
     scale = (0.97+0.03*out_cubic(p_in)+0.010*max(tau-0.8, 0))*(1-0.93*k_c)
     rot = 22.5*in_out_cubic(lin(tau, 2.6, 3.1))
     if tau < 3.12 and p_in > 0:
-        D = 300; px = max(int(D*scale), 8)
-        a = logo_alpha(px)
-        a = a*(1-ring_mask(px)*smooth(lin(tau, 2.6, 2.95)))
-        Mr = cv2.getRotationMatrix2D(((px-1)/2, (px-1)/2), -rot, 1.0)
-        a = cv2.warpAffine(a, Mr, (px, px), flags=cv2.INTER_LINEAR)
+        D = 300
+        src = logo_alpha(800); src = src*(1-ring_mask(800)*smooth(lin(tau, 2.6, 2.95)))
+        sc = D*scale/800
+        if sc < 0.5: src = cv2.resize(src, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA); sc *= 2
+        n = src.shape[0]
+        Mr = cv2.getRotationMatrix2D(((n-1)/2, (n-1)/2), -rot, sc)
+        Mr[:, 2] += [CX-(n-1)/2, CY-(n-1)/2]
+        full = cv2.warpAffine(src, Mr, (W, H), flags=cv2.INTER_AREA if sc < 1 else cv2.INTER_LINEAR)   # sub-pixel: no 1 px steps
         vis = smooth(lin(p_in, 0.25, 1.0))*(1-smooth(lin(k_c, 0.45, 0.85)))
-        x0, y0 = int(CX-px/2), int(CY-px/2)
-        full = np.zeros((H, W), np.float32); full[y0:y0+px, x0:x0+px] = a
         glow = cv2.GaussianBlur(full, (0, 0), 6+10*(1-p_in))*(0.9*math.sin(math.pi*min(p_in, 1))+0.8*k_c)
         img = img*(1-(full*vis)[..., None])+IVORY*(full*vis)[..., None]
         img = 1-(1-img)*(1-np.clip(glow[..., None]*WARM*0.55, 0, 1))
-        # the ring closes into a halo around the newborn star
-        hr = smooth(lin(tau, 2.6, 3.05))*(1-smooth(lin(tau, 3.0, 3.15)))
-        if hr > 0:
-            rad = (D/2*0.93)*(1-0.82*smooth(lin(tau, 2.6, 3.05)))*scale/max(scale, 1e-3)
-            yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-            rr = np.hypot(xx-CX, yy-CY)
-            halo = np.exp(-((rr-rad)/(3+6*hr))**2)*0.45*hr
-            img = 1-(1-img)*(1-np.clip(halo[..., None]*IVORY, 0, 1))
     if 2.9 <= tau < LAUNCH:
         b = smooth(lin(tau, 2.9, 3.05))
-        img = add_sprite(img, star_sprite(46*(1-antic), rot), CX, CY, IVORY, gain=b*(1+0.3*smooth(lin(tau, 2.95, 3.1))))
+        img = add_sprite(img, star_sprite(70*(1-antic), rot), CX, CY, IVORY, gain=b*(1+0.3*smooth(lin(tau, 2.95, 3.1))))
     # words: COMPASS ROSE (ivory) rises under a gold rule, INDONESIA (gold) fades; they leave staggered
     cv = M.Canvas(W, H, "16x9"); k = cv.k
     a1, pad1, asc1, desc1, w1 = M.text_block("COMPASS ROSE", "title", k, 0.62)
@@ -306,32 +322,35 @@ def flying_star(img, tau, c=None):
     near = tau <= T_EXIT+0.05
     lv = life(tau)
     if near:
-        size = 46*0.96*60/max(d, 1.0)*(1+0.3*smooth(lin(tau, LAUNCH, LAUNCH+0.3)))
-        defoc = 1.5*smooth(lin(1-d/25, 0, 1))
+        size = size_near(d)
+        defoc = 0.0
         rays = 1.0
     else:
         far = smooth(lin(tau, PAN0+0.45*(PAN1-PAN0), T0))
-        size = max(46*0.96*60/max(d, 1.0), 6.0)*(1-0.45*far); defoc = 0.0; rays = 0.55*(1-far)
+        size = max(size_near(d), 8.5)*(1-0.35*far); defoc = 0.0; rays = 0.55*(1-far)
     if size > 1600 or not (-size*1.2 < p[0] < W+size*1.2 and -size*1.2 < p[1] < H+size*1.2): return img
     # the tail: where it was in the last ~0.3 s, seen by the camera now (a meteor's trail), ivory to gold
     if not near:
         tail_on = smooth(lin(tau, PAN0+0.5*(PAN1-PAN0), PAN1))
-        hist = np.linspace(tau-0.30, tau, 36); pts = []
+        hist = np.linspace(tau-0.28, tau, 42); pts = []
         for th in hist:
             q, _, zz = star_screen(th, c)
             if q is not None: pts.append(q)
         if tail_on > 0 and len(pts) > 3:
             pts = np.array(pts); cvs = M.Canvas(W, H, "16x9")
             al = (np.linspace(0, 1, len(pts))**2.2)*0.8*tail_on*min(lv, 1.0)
-            n = len(pts); cut = int(n*0.65)
-            cvs.stroke(pts[:cut+1], 1.6, al[:cut+1], GOLDB, chunks=8)
-            cvs.stroke(pts[cut:], 2.0, al[cut:], IVORY, chunks=6)
+            n = len(pts)
+            for i in range(0, n-1, 3):                                  # gold fading to ivory toward the head
+                j = min(i+4, n); w_ = (i+j)/2/n
+                cvs.stroke(pts[i:j], 2.0+0.6*w_, al[i:j], GOLDB*(1-w_**2)+IVORY*w_**2, chunks=1)
             cvs.glow_poly(pts[-10:], 5, M.GOLD, 0.25*tail_on*min(lv, 1.0))
             img = cvs.composite(img)
-    img = add_sprite(img, star_sprite(min(size, 1500), 22.5+40*smooth(lin(tau, LAUNCH, T_EXIT)), rays=rays), p[0], p[1], IVORY,
-                     gain=lv, blur_vec=bv, defocus=defoc)
+    kn = smooth(lin(size, 80, 300)) if near else 0.0               # close up: a hot small core, sharp rays, short streak
+    img = add_sprite(img, star_sprite(min(size, 1500), 22.5+40*smooth(lin(tau, LAUNCH, T_EXIT)), rays=rays,
+                                      cr=0.10-0.06*kn, hr=0.35-0.2*kn), p[0], p[1], IVORY,
+                     gain=lv, blur_vec=(bv[0]*(1-0.7*kn), bv[1]*(1-0.7*kn)), defocus=defoc)
     # bloom around the head (never a white-out: <= 25 % of the frame)
-    kb = smooth(lin(size, 70, 320))
+    kb = smooth(lin(size, 120, 420))
     if near and kb > 0:
         yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
         rr = np.hypot(xx-p[0], yy-p[1])/min(0.12*size+12, 0.25*H)
@@ -351,7 +370,7 @@ def intro_frame(tau, black):
     u = pan_u(tau)
     ex = 1.0+0.20*smooth(lin(u, 0.55, 0.8))*(1-smooth(lin(u, 0.8, 1.0)))        # Earth arrives a touch hot, settles
     img = img*ex
-    sg = smooth(lin(tau, 0.0, 0.25))*(1-0.25*pass_k(tau))
+    sg = smooth(lin(tau, 0.0, 0.25))*(1-0.25*pass_k(tau))*(1+1.0*(1-smooth(lin(tau, 4.4, 5.4))))   # the eye is dark-adapted before the Earth
     img = stars_plate(img, tau, sg)
     x = G.grade(img, 0.0, mt)
     x = x*smooth(lin(tau, 0.0, 0.24))                                           # 6 frames from black
