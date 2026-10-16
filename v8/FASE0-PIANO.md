@@ -26,14 +26,14 @@ Da 40 km di quota sembreranno sempre piccole, perché lo sono. Per vederle "scor
 Container: 4 CPU, 15 GB RAM, nessuna GPU.
 
 Stessa camera (inquadratura finale del riferimento, 24,9 s) e stessi dati (lastra L2 rigenerata, DEM Copernicus GLO-30):
-`review/f0/ab_first.jpg` (sopra: finale; sotto: camera bassa sul campo di nuvole a ovest).
+`review/f0/ab_motori.jpg` (sopra: finale; sotto: camera bassa a 2 km sul campo di nuvole a ovest, guardando Seliu). Esposizione pareggiata. Nella riga sotto il motore numpy mostra il nero oltre la lastra di Seliu perché per la prova ho caricato solo L2, e perché oggi non ha cielo né orizzonte a bassa quota: è una delle cose da aggiungere.
 
 | | Motore numpy attuale | Blender 4.5.14 LTS, Cycles CPU |
 |---|---|---|
 | 960×540 | ~2 s | 32 s (senza nuvole), 100 s (con nuvole volumetriche) |
-| 1920×1080 | TEMPO_A1080 | 112 s senza nuvole · TEMPO_B1080 con nuvole |
-| 3840×2160 | TEMPO_A2160 | ~4× il 1080p (stima) |
-| 700 fotogrammi (28 s) a 1080p | TOT_A | ~22 h senza nuvole; TOT_B con nuvole |
+| 1920×1080 | **10 s** | **112 s** senza nuvole · **355 s** con nuvole |
+| 3840×2160 | **52 s** | ~4× il 1080p (stima: ~24 min con nuvole) |
+| 700 fotogrammi (28 s) | ~2 h a 1080p · ~10 h in 4K (prima dei miglioramenti, che stimo ×1,5–2) | ~22 h senza nuvole, ~69 h con nuvole a 1080p · ~280 h in 4K |
 
 **Cosa ho visto.**
 - Sull'inquadratura finale Blender **non dà un salto visibile**: la differenza fra le due immagini è quasi tutta di grade. Il rilievo vero conta poco: su Seliu il DEM è quasi tutto chioma degli alberi (mediana 17 m, massimo 57 m); sulla costa di Belitung arriva a ~340 m, ma da 16 km di distanza si percepisce appena.
