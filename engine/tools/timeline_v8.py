@@ -17,24 +17,27 @@ VFOV = 36.0 if FMT == "16x9" else 58.0
 
 #       t      lat       lon      range_km  head   tilt   roll
 KEYS = [
-    (0.0,  -0.95,   105.05,   6600,    -7.0,  64.0,   0.0),   # orbit: the limb across the top, Sundaland below
+    (0.0,   0.50,   105.00,   6600,   -14.0,  60.0,   0.0),   # orbit: the limb across the top, Sundaland below
     (3.6,  -1.95,   105.75,   3700,    -4.0,  54.0,   0.4),
     (6.8,  -2.55,   106.45,   1850,     3.0,  45.0,   1.4),   # flights: Singapore far, Jakarta near, Belitung right
     (9.9,  -2.84,   107.62,    470,    12.0,  38.0,   1.2),   # bending toward Belitung
-    (12.6, -2.93,   107.80,    225,    18.0,  40.0,   0.0),   # BELITUNG, the camera almost still
-    (15.3, -3.13,   107.50,     38,    32.0,  56.0,  -2.0),   # dive over the real cumulus field, south-west of Seliu
+    (11.6, -2.90,   107.76,    290,    16.0,  39.0,   0.4),   # BELITUNG: the camera settles...
+    (12.9, -2.95,   107.81,    232,    19.0,  41.0,   0.0),   # ...almost still under the title
+    (15.5, -3.13,   107.50,     36,    32.0,  56.0,  -2.0),   # dive over the real cumulus field, south-west of Seliu
     (17.8, -3.214,  107.528,    13.5,  14.0,  62.0,  -3.0),   # out of the clouds: Seliu ahead, banking into the turn
-    (20.8, -3.213,  107.548,     9.4,  -7.0,  63.5,  -1.4),
-    (24.0, -3.214,  107.552,     8.6, -13.5,  63.8,  -0.5),
-    (28.0, -3.215,  107.553,     8.2, -17.0,  63.6,   0.0),   # the hold: a slow helicopter drift, never still
+    (20.8, -3.218,  107.544,    12.6,  -7.0,  60.0,  -1.2),
+    (24.0, -3.219,  107.546,    11.5, -12.0,  60.0,  -0.4),
+    (28.0, -3.219,  107.546,    11.0, -15.0,  60.5,   0.0),   # the hold: a slow helicopter drift, never still
+    (31.0, -3.219,  107.546,    10.6, -17.4,  60.8,   0.2),   # beyond the cut: keeps the drift alive on the last frame
 ]
 if FMT == "9x16":
-    KEYS = KEYS[:5]+[
+    KEYS = KEYS[:6]+[
         (15.3, -3.12,   107.64,     40,   -18.0,  55.0,   1.5),
-        (18.0, -3.204,  107.578,    14.0,  -62.0,  60.0,   2.5),
-        (21.0, -3.206,  107.563,    10.2,  -84.0,  62.5,   1.0),
-        (24.0, -3.207,  107.559,     9.4,  -89.0,  63.0,   0.3),
-        (28.0, -3.207,  107.556,     9.0,  -91.5,  63.0,   0.0),
+        (18.0, -3.204,  107.575,    14.0,  -70.0,  59.0,   2.5),
+        (21.0, -3.208,  107.560,    11.8, -98.0,  58.5,   1.0),
+        (24.0, -3.210,  107.554,    10.7, -106.0, 58.0,   0.3),
+        (28.0, -3.210,  107.553,    10.4, -108.0, 58.2,   0.0),
+        (31.0, -3.210,  107.552,    10.1, -109.5, 58.4,   0.2),
     ]
 _k = np.array(KEYS, float)
 _f = {i: PchipInterpolator(_k[:, 0], _k[:, i]) for i in (1, 2, 4, 5, 6)}
@@ -45,7 +48,7 @@ def ramp(t, a, b):
 
 def camera(t):
     """-> lat, lon, range_m, heading, tilt, roll"""
-    t = float(np.clip(t, 0, DURATION))
+    t = float(np.clip(t, 0, DURATION+0.5))
     lat, lon, hd, tl, rl = (float(_f[i](t)) for i in (1, 2, 4, 5, 6))
     # the final approach breathes like a helicopter hold: tiny, incommensurate, never a loop
     w = ramp(t, 17.0, 21.0)

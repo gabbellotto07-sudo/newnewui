@@ -54,7 +54,7 @@ def env_pts(n, pts, smooth=0.25):
     t = np.arange(n)/SR; p = np.array(pts, float)
     e = np.interp(t, p[:, 0], p[:, 1])
     if smooth > 0:
-        k = int(smooth*SR) | 1; e = np.convolve(np.pad(e, k//2, mode="edge"), np.hanning(k)/np.hanning(k).sum(), "valid")
+        k = int(smooth*SR) | 1; e = signal.fftconvolve(np.pad(e, k//2, mode="edge"), np.hanning(k)/np.hanning(k).sum(), "valid")
     return e
 
 def pan(x, p):
@@ -104,14 +104,15 @@ def build(fmt="16x9"):
     hi = loop_to(load("mk_1267.wav", 1.0), N)                         # wind at a mountain top, thinned
     hi = filt(hi, "highpass", 900); hi = filt(hi, "lowpass", 7000)
     e = env_pts(N, [(0, 0.0), (0.4, 0.55), (4, 0.7), (8, 0.55), (11, 0.25), (13.5, 0.0), (28, 0)], 0.6)
-    stems["air_high"] = width(hi, 1.3)*e[:, None]*db(-7)
+    stems["air_high"] = width(hi, 1.3)*e[:, None]*db(-3)
     # orbit tone: a low A with its harmonics (audible on a phone through the 2nd-4th partials), very slow swell
     f0 = 55.0
-    tone = sum(a*np.sin(2*np.pi*f0*k*t+ph) for k, a, ph in ((1, 0.55, 0), (2, 0.6, 1.1), (3, 0.5, 2.3), (4, 0.38, 0.7), (5, 0.22, 2.9), (6, 0.16, 1.9), (8, 0.08, 0.4)))
+    tone = sum(a*np.sin(2*np.pi*f0*k*t+ph) for k, a, ph in ((1, 0.30, 0), (2, 0.50, 1.1), (3, 0.62, 2.3), (4, 0.52, 0.7), (5, 0.38, 2.9), (6, 0.28, 1.9), (8, 0.16, 0.4), (10, 0.08, 1.3)))
     tone = np.tanh(1.6*tone)/np.tanh(1.6)                                # gentle saturation: more harmonics
     tone *= 1+0.06*np.sin(2*np.pi*0.13*t)
     e = env_pts(N, [(0, 0.0), (0.3, 0.6), (3, 1.0), (7, 0.8), (10.5, 0.35), (13.5, 0.0), (28, 0)], 0.8)
-    stems["orbit_tone"] = np.stack([tone, np.roll(tone, 37)], 1)*e[:, None]*db(-33)
+    tone = filt(tone, "highpass", 90)
+    stems["orbit_tone"] = np.stack([tone, np.roll(tone, 37)], 1)*e[:, None]*db(-31)
     # ---------------------------------------------------------------- 2. descent wind, driven by the camera
     w1 = loop_to(load("mk_1172.wav"), N); w2 = loop_to(load("mk_2658.wav", 3.0), N); w3 = loop_to(load("mk_1200.wav"), N)
     wind = filt(0.55*w1+0.6*w2+0.35*w3, "highpass", 120)
@@ -207,14 +208,44 @@ def master(stems, target=-20.0):
     g = db(target-L)
     return dip*g, g
 
+def glue(mix, thr_db=-30.0, ratio=2.2, win=0.35):
+    """slow RMS compression of the whole bed: lifts the quiet orbit relative to the sea, gently"""
+    m = (mix**2).mean(1); k = int(win*SR)
+    rms = np.sqrt(signal.fftconvolve(m, np.ones(k)/k, "same").clip(1e-12))
+    lv = 20*np.log10(rms)
+    over = np.maximum(lv-thr_db, 0)
+    g = -over*(1-1/ratio)
+    g = signal.fftconvolve(g, np.hanning(int(0.2*SR))/np.hanning(int(0.2*SR)).sum(), "same")
+    return mix*db(g)[:, None]
+
+def limit(mix, ceiling_db=-1.2, look=0.004, rel=0.08):
+    """true-peak-safe limiter: 4x oversampled peaks, look-ahead gain with smooth release"""
+    up = signal.resample_poly(mix, 4, 1, axis=0)
+    pk = np.abs(up).max(1).reshape(-1, 4).max(1)[:len(mix)]
+    c = db(ceiling_db)
+    need = np.minimum(1.0, c/np.maximum(pk, 1e-9))
+    k = int(look*SR)
+    need = -np.maximum.accumulate(-np.r_[need[k:], np.ones(k)]) if False else need
+    from scipy.ndimage import minimum_filter1d
+    g = minimum_filter1d(need, size=2*k+1)
+    a = np.exp(-1/(rel*SR)); out = np.empty_like(g); cur = 1.0
+    for i in range(len(g)):                                   # instant attack, smooth release
+        cur = g[i] if g[i] < cur else g[i]+(cur-g[i])*a
+        out[i] = cur
+    return mix*out[:, None]
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("out"); ap.add_argument("--fmt", default="16x9")
     ap.add_argument("--target", type=float, default=-20.0)
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True)
     stems = build(a.fmt)
+    import pyloudnorm as pyln
     mix, g = master(stems, a.target)
-    peak = np.max(np.abs(mix))
-    if peak > db(-1.5): mix *= db(-1.5)/peak
+    mix = glue(mix)
+    meter = pyln.Meter(SR)
+    for _ in range(3):                                       # loudness to target, true peak under -1 dBTP
+        mix = mix*db(a.target-meter.integrated_loudness(mix)); mix = limit(mix)
+    g = g*float(np.sqrt(np.mean(mix**2))/max(np.sqrt(np.mean(sum(stems.values())**2))*g, 1e-12))
     sf.write(os.path.join(a.out, f"ambience_{a.fmt}.wav"), mix.astype(np.float32), SR, subtype="PCM_24")
     for k, v in stems.items():
         sf.write(os.path.join(a.out, f"stem_{a.fmt}_{k}.wav"), (v*g).astype(np.float32), SR, subtype="PCM_24")

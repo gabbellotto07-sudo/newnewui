@@ -34,8 +34,21 @@ X = -hc+(c0+xx+.5)*pc; Y = hc-(c0+yy+.5)*pc
 e = np.maximum(np.abs(X), np.abs(Y))/hf
 w = np.clip((1-e)/0.25, 0, 1)
 if fine == "L2": w = np.minimum(w, np.clip((30000-np.hypot(X, Y))/14000, 0, 1))
-if fine == "LM": w = np.minimum(w, np.clip((88000-np.hypot(X, Y))/16000, 0, 1))
+if fine == "LM": w = np.clip((1-e)/0.07, 0, 1)
 sl = (slice(c0, c0+side), slice(c0, c0+side))
+# open water: towards the edge of the fine level, its low-frequency colour follows the coarse level, so the
+# sea never shows a disc or a square where the levels meet (detail stays the fine level's)
+if fine == "LM":
+    wat = (small[3] < 0.5) & (C[3][sl] < 0.5)
+    sig = max(3.0, 12000.0/pc)
+    r = np.hypot(X, Y)
+    keep = np.clip(((0.55*hf)-r)/(0.3*hf), 0, 1)
+    for i in range(3):
+        wf = cv2.GaussianBlur(wat.astype(np.float32), (0, 0), sig)
+        lf = cv2.GaussianBlur(np.where(wat, small[i], 0).astype(np.float32), (0, 0), sig)/np.maximum(wf, 1e-4)
+        lc = cv2.GaussianBlur(np.where(wat, C[i][sl], 0).astype(np.float32), (0, 0), sig)/np.maximum(wf, 1e-4)
+        corr = np.where(wat, (lc-lf)*(1-keep), 0)
+        small[i] = small[i]+corr
 for i in range(3): C[i][sl] = C[i][sl]*(1-w)+small[i]*w
 C[3][sl] = np.where(w > 0.5, small[3] > 0.5, C[3][sl])
 np.save(f"data/{coarse}_tex.npy", C); print("injected", fine, "->", coarse, "ratio", k, "window", c0, side)

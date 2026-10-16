@@ -56,6 +56,34 @@ def mesh(step):
     np.save(D("bl", "L2_cloud.npy"), np.ascontiguousarray(cloud_domes(cl, px)[::-1]))
     print("mesh", P.shape, "z range", float(P[..., 2].min()), float(P[..., 2].max()))
 
+def mesh_lm(cx, cy, half, step_m=60.0, prefix="LMc"):
+    """crop of the Belitung level LM (15 m) centred on (cx, cy) AEQD metres, +-half metres: mesh on the real
+    sphere with GLO-30 relief, albedo, cloud dome heights (same rule as render_v8). For the Blender variant."""
+    import render_v8 as R
+    H0, P0 = 90000, 15
+    T = np.load(D("LM_tex.npy"), mmap_mode="r"); n = T.shape[1]
+    c0 = int(round((cx-half+H0)/P0)); r0 = int(round((H0-(cy+half))/P0)); m = int(round(2*half/P0))
+    sl = (slice(r0, r0+m), slice(c0, c0+m))
+    land = np.array(T[3][sl]) > 0.5
+    dem = np.load(D("LM_cop.npy"), mmap_mode="r")[sl].astype(np.float32)
+    h = np.where(cv2.GaussianBlur(land.astype(np.float32), (0, 0), 2) > 0.5, np.maximum(dem, 0.5), 0.0).astype(np.float32)
+    h = cv2.GaussianBlur(h, (0, 0), 1.0)
+    st = max(1, int(round(step_m/P0)))
+    idx = np.arange(0, m, st); idx = np.r_[idx, m-1] if idx[-1] != m-1 else idx
+    cc, rr = np.meshgrid(idx, idx)
+    X = -H0+(c0+cc+0.5)*P0; Y = H0-(r0+rr+0.5)*P0
+    lat, lon = aeqd_inv(X, Y)
+    Pv = to_local(ecef(lat, lon, h[rr, cc].astype(np.float64)))
+    os.makedirs(D("bl"), exist_ok=True)
+    np.save(D("bl", f"{prefix}_verts.npy"), Pv.astype(np.float32))
+    np.save(D("bl", f"{prefix}_uv.npy"), np.stack([(cc+0.5)/m, 1-(rr+0.5)/m], -1).astype(np.float32))
+    rgba = np.stack([np.array(T[i][sl]) for i in range(3)]+[land.astype(np.float32)], -1)[::-1]
+    np.save(D("bl", f"{prefix}_albedo.npy"), np.ascontiguousarray(rgba, np.float32))
+    al = np.load(D("LM_clouds.npy"), mmap_mode="r")[sl].astype(np.float32)
+    np.save(D("bl", f"{prefix}_cloud.npy"), np.ascontiguousarray(R.cloud_domes(al, P0)[::-1]))
+    json.dump({"cx": cx, "cy": cy, "half": half, "base": R.CLOUD_BASE, "dome_max": R.DOME_MAX}, open(D("bl", f"{prefix}_meta.json"), "w"))
+    print("mesh_lm", Pv.shape, "crop px", m)
+
 def cloud_domes(a, px):
     """real cloud mask -> dome height (m) above the flat base. A cumulus of radius r rises ~0.8 r:
     h = 0.8*sqrt(r^2-(r-e)^2), e = distance to the cloud edge, r = local max of e (the cloud's own radius)."""
@@ -85,7 +113,9 @@ def cam_rec(lat, lon, rng, heading, tilt, vfov):
 
 if __name__ == "__main__":
     m = sys.argv[1]
-    if m == "mesh":
+    if m == "mesh_lm":
+        mesh_lm(*map(float, sys.argv[2:5]))
+    elif m == "mesh":
         mesh(int(sys.argv[sys.argv.index("--step")+1]) if "--step" in sys.argv else 4)
     elif m == "cams":
         import timeline as TL

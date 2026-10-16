@@ -37,7 +37,7 @@ WIND = (-6.0, 4.0)                              # m/s, south-east monsoon drift 
 BR, HR = np.array([5.8e-6, 13.5e-6, 33.1e-6], np.float32)*0.38, 8000.0
 BM, HM = 1.5e-5, 1200.0
 SKY_R = np.array([0.16, 0.24, 0.42], np.float32)     # in-scatter radiance per unit (1-T), reflectance units
-SKY_M = np.array([0.24, 0.235, 0.22], np.float32)
+SKY_M = np.array([0.20, 0.196, 0.185], np.float32)
 
 # ------------------------------------------------------------------ camera with bank
 class Camera(R5.Camera):
@@ -107,10 +107,17 @@ def load_levels(names=("LG", "L0", "L1", "LM", "L2"), clouds=True, relief=True):
         if name not in names or not os.path.exists(D(LEVEL_FILES[name])): continue
         a = np.load(D(LEVEL_FILES[name]), mmap_mode="r")
         lv = {"half": half, "px": px, "rgb": Tex(np.array(a[:3]).transpose(1, 2, 0), half, px, RGB_SCALE)}
+        if name in ("L0", "L1", "LM", "L2"):
+            lv["land"] = Tex((np.array(a[3]) > 0.5).astype(np.float32), half, px, 65535.0)
         if clouds and os.path.exists(D(f"{name}_clouds.npy")):
             al = np.load(D(f"{name}_clouds.npy")).astype(np.float32)
-            if name == "L2":   # L2 holds only the hand-picked clean-plate clouds; the field comes from LM
-                al *= 1.0
+            if name in ("LM", "L1"):
+                # keep the cumulus over the sea; over land, seen from far up, they read as dirt on Belitung
+                # (removing clouds is allowed, adding never): soft 1 km margin from the coast
+                landm = (np.array(a[3]) > 0.5).astype(np.uint8)
+                rad = max(1, int(round(1000/px)))
+                landm = cv2.dilate(landm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*rad+1, 2*rad+1)))
+                al *= 1-cv2.GaussianBlur(landm.astype(np.float32), (0, 0), max(1.0, rad/2))
             lv["alpha"] = Tex(al, half, px, 65535.0)
             lv["dome"] = Tex(cloud_domes(al, px), half, px, 65535.0/1000)
         dem = {"L2": "L2_cop.npy", "LM": "LM_cop.npy"}.get(name)
@@ -119,6 +126,9 @@ def load_levels(names=("LG", "L0", "L1", "LM", "L2"), clouds=True, relief=True):
             land = np.array(a[3]) > 0.5
             h = np.where(cv2.GaussianBlur(land.astype(np.float32), (0, 0), 1.5) > 0.5, np.clip(h, 0, None), 0)
             lv["dem"] = Tex(cv2.GaussianBlur(h, (0, 0), 0.8), half, px, 100.0)
+        if clouds and name in ("LG", "L0") and os.path.exists(D(f"{name}_hcloud.npy")):
+            lv["hcl"] = Tex(np.load(D(f"{name}_hcloud.npy")).astype(np.float32), half, px, 65535.0)
+            lv["htop"] = Tex(np.load(D(f"{name}_htop.npy")), half, px, 65535.0/16000)
         if name == "L2" and os.path.exists(D("L2_light.npy")):
             lv["light"] = Tex(np.load(D("L2_light.npy")), half, px, 65535.0)
         L[name] = lv
@@ -137,7 +147,7 @@ def level_weights(L, x, y, fp):
             W[name] = rem; break
         ew = lv["rgb"].edge(x, y)
         if name == "L2": ew = np.minimum(ew, np.clip((30000-np.hypot(x, y))/14000, 0, 1))
-        if name == "LM": ew = np.minimum(ew, np.clip((88000-np.hypot(x, y))/16000, 0, 1))
+        if name == "LM": ew = lv["rgb"].edge(x, y, feather=0.07)
         rw = np.clip((np.log2(2.6*lv["px"])-np.log2(np.maximum(fp, 1e-3)))/1.5, 0, 1)
         w = ew*rw
         W[name] = w*rem; rem = rem*(1-w)
@@ -210,17 +220,18 @@ def clouds(L, C, d, cam, fp_unit, t, tt_ground, hit_ground, Wfun, n_steps=28):
     # far clouds (smaller than a few pixels): a soft layer averaged over the pixel footprint, like a real sensor
     okm, tm, _ = sphere_hits(C, d, R_E+CLOUD_BASE+120)
     fpm = np.maximum(fp_unit*np.where(okm, tm, 0), 1.0)
-    wd_all = np.clip((fpm-18.0)/30.0, 0, 1)*cand*okm*(tm > 0)
+    wd_all = np.clip((fpm-40.0)/40.0, 0, 1)*cand*okm*(tm > 0)
     if (wd_all > 0).any():
         jf = np.nonzero(wd_all > 0)
         Pm = C+d[jf]*tm[jf][:, None]
         xm_, ym_, _ = to_xy(Pm)
         xm_ += -WIND[0]*t; ym_ += -WIND[1]*t
         Wf = Wfun(xm_, ym_, fpm[jf])
-        af, _ = sample_field(L, "alpha", xm_, ym_, fpm[jf]*1.5, Wf)
-        cf = np.clip(af*0.9, 0, 1)
+        af, _ = sample_field(L, "alpha", xm_, ym_, fpm[jf]*4.0, Wf, bias=0.8)
+        k_alt = float(np.clip(1-(cam.alt-20000)/90000, 0.10, 1.0))
+        cf = np.clip(af*0.85*k_alt, 0, 1)
         cov[jf] = cf*wd_all[jf]; cdist[jf] = tm[jf]
-        ccol[jf] = np.array([0.74, 0.75, 0.77], np.float32)*(0.92+0.08*cf[:, None])
+        ccol[jf] = np.array([0.56, 0.575, 0.60], np.float32)*(0.90+0.10*cf[:, None])
     near = cand & (wd_all < 1)
     if not near.any(): return ccol, cov, cdist
     cand = near
@@ -272,17 +283,75 @@ def clouds(L, C, d, cam, fp_unit, t, tt_ground, hit_ground, Wfun, n_steps=28):
     ndl = nrm@sl
     # sunlit tops, cool shadowed flanks, darker towards the flat base; thin edges let light through
     hrel = np.clip((hs-CLOUD_BASE)/np.maximum(DOME_MAX*0.6, 1), 0, 1)
-    sunlit = np.clip((ndl+0.30)/1.30, 0, 1)**1.2
-    base_dark = 0.55+0.45*np.sqrt(hrel)
-    val = (0.70*sunlit+0.10)*base_dark
-    rgb = np.stack([val*1.00+0.07, val*1.00+0.085, val*0.99+0.11], -1).astype(np.float32)*0.95
-    edge = np.clip(al/0.55, 0, 1)
-    cv = (edge*edge*(3-2*edge)).astype(np.float32)
+    sunlit = np.clip((ndl+0.15)/1.15, 0, 1)**1.35
+    base_dark = 0.50+0.50*np.sqrt(hrel)
+    sun_part = 0.52*sunlit*base_dark
+    amb = (0.10+0.06*hrel)[:, None]*np.array([0.82, 0.90, 1.08], np.float32)       # sky light in the shade: cool
+    rgb = (sun_part[:, None]*np.array([1.0, 0.985, 0.95], np.float32)+amb).astype(np.float32)
+    edge = np.clip(al/0.65, 0, 1)
+    cv = (edge*edge*(3-2*edge)).astype(np.float32)*0.97
+    rgb = rgb*(0.85+0.15*cv[:, None])                                               # thin fringes are greyer
     ii = (idx[0][sel[hi]], idx[1][sel[hi]])
     wn = 1-wd_all[ii]                                  # near-cloud share of this pixel
     ccol[ii] = ccol[ii]*(1-wn[:, None])+rgb*wn[:, None]
     cov[ii] = cov[ii]*(1-wn)+cv*wn; cdist[ii] = (a0[hi]+(a1[hi]-a0[hi])*s)
     return ccol, cov, cdist
+
+def hi_fields(L, x, y, fp):
+    """Himawari opacity and cloud-top height: L0 inside its extent (feathered), LG outside"""
+    out_a = np.zeros(x.shape, np.float32); out_h = np.zeros(x.shape, np.float32)
+    if "LG" not in L or "hcl" not in L["LG"]: return out_a, out_h
+    w0 = L["L0"]["rgb"].edge(x, y, 0.1) if "L0" in L and "hcl" in L["L0"] else np.zeros(x.shape, np.float32)
+    for name, w in (("L0", w0), ("LG", 1-w0)):
+        m = w > 1e-4
+        if m.any():
+            out_a += L[name]["hcl"].sample(x, y, np.maximum(fp, 1.6*L[name]["px"]), mask=m, bias=0.6)*w
+            out_h += L[name]["htop"].sample(x, y, np.maximum(fp, 1.6*L[name]["px"]), mask=m, bias=0.6)*w
+    # near Belitung the Sentinel-2 cumulus (10-100 m) take over: the 2 km field fades out there
+    r = np.hypot(x, y)
+    out_a *= np.clip((r-140000)/90000, 0, 1)
+    return out_a, out_h
+
+def hi_clouds(L, C, d, cam, pix_ang):
+    """real clouds of 29-07-2019 03:20 UTC (Himawari-8) at their real top height: colour, coverage, distance"""
+    H0 = 6000.0
+    ok, t0, _ = sphere_hits(C, d, R_E+H0)
+    ok &= t0 > 0
+    cov = np.zeros(d.shape[:2], np.float32); col = np.zeros(d.shape, np.float32); dist = np.zeros(d.shape[:2], np.float32)
+    if not ok.any() or "LG" not in L or "hcl" not in L["LG"]: return col, cov, dist
+    idx = np.nonzero(ok); dd = d[idx]; tt = t0[idx]
+    for _ in range(2):                                   # fixed point: hit the sphere at the cloud's own top
+        P = C+dd*tt[:, None]; x, y, _ = to_xy(P)
+        fp = np.maximum(tt*pix_ang, 500.0)
+        a, h = hi_fields(L, x, y, fp)
+        hh = np.where(a > 0.02, np.clip(h, 800, 15000), H0)
+        okk, tn, _ = sphere_hits(C, dd, R_E+hh)
+        tt = np.where(okk & (tn > 0), tn, tt)
+    P = C+dd*tt[:, None]; x, y, _ = to_xy(P)
+    fp = np.maximum(tt*pix_ang, 500.0)
+    a, h = hi_fields(L, x, y, fp)
+    e = np.maximum(fp, 2000.0)
+    _, hx1 = hi_fields(L, x+e, y, fp); _, hx0 = hi_fields(L, x-e, y, fp)
+    _, hy1 = hi_fields(L, x, y+e, fp); _, hy0 = hi_fields(L, x, y-e, fp)
+    nx, ny = -(hx1-hx0)/(2*e)*3.0, -(hy1-hy0)/(2*e)*3.0      # tops relief, gently exaggerated for shading only
+    n = np.stack([nx, ny, np.ones_like(nx)], -1); n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    az, el = math.radians(SUN_AZ), math.radians(SUN_EL)
+    sl = np.array([math.sin(az)*math.cos(el), math.cos(az)*math.cos(el), math.sin(el)], np.float32)
+    lit = np.clip((n@sl+0.2)/1.2, 0, 1)
+    thick = np.clip(a*1.15, 0, 1)
+    val = (0.44+0.26*lit)*(0.78+0.22*thick)
+    rgb = np.stack([val, val*1.005, val*1.03], -1).astype(np.float32)
+    cv_ = np.clip((a-0.04)/0.85, 0, 1); cv_ = cv_*cv_*(3-2*cv_)
+    cov[idx] = cv_; col[idx] = rgb; dist[idx] = tt
+    return col, cov, dist
+
+def hi_cloud_shadow(L, x, y, fp):
+    """their shadows on the ground, displaced by the real top height under the real sun"""
+    a0, h0 = hi_fields(L, x, y, np.maximum(fp, 1000.0))
+    off = np.clip(h0, 800, 15000)/math.tan(math.radians(SUN_EL))
+    sx, sy = off*math.sin(math.radians(SUN_AZ)), off*math.cos(math.radians(SUN_AZ))
+    a, _ = hi_fields(L, x+sx, y+sy, np.maximum(fp, 1000.0))
+    return np.clip(a, 0, 1)
 
 def cloud_shadow(L, x, y, fp, t, W):
     off = (CLOUD_BASE+150)/math.tan(math.radians(SUN_EL))
@@ -304,6 +373,22 @@ def tone(x, look=LOOK):
 def space_sky(d, C):
     return R5.sky(d, C, None)
 
+# ------------------------------------------------------------------ surface: tin mines, sand, reef flats
+KNEE, KNEE_SLOPE = 0.13, 0.50
+def bright_knee(col, landw=None):
+    """soft shoulder on high surface reflectance (bare sand, tin mines, reef flats): hue kept, a touch warmer.
+    On land the shoulder starts lower and is firmer (tin mines, bare ground). Nothing is removed: the mines
+    stay where they are, they just stop shouting."""
+    lum = (col*np.array([0.2126, 0.7152, 0.0722], np.float32)).sum(-1)
+    kn = KNEE if landw is None else KNEE-0.055*landw
+    sl = KNEE_SLOPE if landw is None else KNEE_SLOPE-0.18*landw
+    over = np.maximum(lum-kn, 0)
+    new = np.where(lum > kn, kn+over*sl/(1+over*2.0), lum)
+    k = (new/np.maximum(lum, 1e-5))[..., None]
+    w = np.clip(over/0.08, 0, 1)[..., None]
+    warm = np.array([1.015, 1.0, 0.975], np.float32)
+    return col*k*(1-w+w*warm)
+
 # ------------------------------------------------------------------ one frame
 def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
     Ws, Hs = int(round(W*ss)), int(round(H*ss))
@@ -322,45 +407,72 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
     Wl = level_weights(L, x, y, fp)
     # relief: walk the hit back along the ray by the local height (3 fixed-point steps = parallax)
     hh = np.zeros(x.shape, np.float32)
-    if cam.alt < 400000 and any("dem" in L[n] for n in Wl):
-        for _ in range(3):
-            hgt, ws = sample_field(L, "dem", x, y, fp, Wl)
-            hh = hgt
-            t2 = tt-hh/cosi
-            P2 = C+d*t2[..., None]
-            x, y, _ = to_xy(P2)
-        tt = tt-hh/cosi
+    if cam.alt < 60000 and any("dem" in L[n] for n in Wl):
+        hgt, _ = sample_field(L, "dem", x, y, fp, Wl)
+        sel = (hgt > 0.5) & (fp < 120)
+        if sel.any():
+            idx = np.nonzero(sel)
+            xs, ys, fs, cs, ts_ = x[idx], y[idx], fp[idx], cosi[idx], tt[idx]
+            ds = d[idx]; Ws = {k: w[idx] for k, w in Wl.items()}
+            h_ = hgt[idx]
+            for _ in range(2):
+                P2 = C+ds*(ts_-h_/cs)[:, None]
+                xs, ys, _ = to_xy(P2)
+                h_, _ = sample_field(L, "dem", xs, ys, fs, Ws)
+            x = x.copy(); y = y.copy()
+            x[idx], y[idx] = xs, ys; hh[idx] = h_
+            tt = tt-hh/cosi
     col = np.zeros(x.shape+(3,), np.float32); wsum = np.zeros(x.shape, np.float32)
     for name, w in Wl.items():
         m = (w > 1e-4) & hit
         if m.any():
-            col += L[name]["rgb"].sample(x, y, fp, mask=m, bias=-0.25)*w[..., None]; wsum += w
+            col += L[name]["rgb"].sample(x, y, fp, mask=m, bias=-0.5)*w[..., None]; wsum += w
     col /= np.maximum(wsum, 1e-6)[..., None]
+    landw, lws = sample_field(L, "land", x, y, fp, Wl)
+    landw = np.where(lws > 1e-3, landw/np.maximum(lws, 1e-6), 0)
+    col = bright_knee(col, landw)
+    # sun glint: the sun's specular reflection on open water (wind-roughened, ~10 deg wide), real geometry
+    nrm32 = nrm.astype(np.float32); d32 = d.astype(np.float32)
+    refl = d32-2*(d32*nrm32).sum(-1, keepdims=True)*nrm32
+    cg = np.clip(refl@SUN.astype(np.float32), -1, 1)
+    ang = np.degrees(np.arccos(cg))
+    glint = np.exp(-(ang/7.0)**2)*(1-np.clip(landw, 0, 1))*hit
+    if glint.max() > 1e-3:
+        col += (0.032*glint)[..., None]*np.array([1.0, 0.97, 0.90], np.float32)
     t_tex = time.time()
     # Seliu in the light (matte), the rest a touch darker
     light = None
     if "L2" in L and "light" in L["L2"]:
         inside = (np.abs(x) < 31000) & (np.abs(y) < 31000)
         light = L["L2"]["light"].sample(x, y, fp, mask=inside)
-        gl = TL.glow(t)
-        if gl > 0:
-            # +25 % on the island and its reef, -30 % around it, fading out with distance (no hard frame)
-            near = np.clip((30000-np.hypot(x, y))/30000, 0, 1)**0.5
-            k = 1+gl*(0.25*light-0.30*(1-light)*near)
-            col *= k[..., None]
+        near_seliu = np.clip((30000-np.hypot(x, y))/30000, 0, 1)**0.5
     # cloud shadows on the ground
     if fp.min() < 3000:
-        sh = cloud_shadow(L, x, y, fp, t, Wl)
-        col *= (1-0.50*sh)[..., None]
+        sh = cloud_shadow(L, x, y, fp, t, level_weights(L, x, y, fp/3.0))
+        k_alt = float(np.clip(1-(cam.alt-25000)/120000, 0.25, 1.0))
+        col *= (1-0.50*k_alt*sh)[..., None]
+    # shadows of the high real clouds (orbit, region)
+    if cam.alt > 40000 and "LG" in L and "hcl" in L["LG"]:
+        shh = hi_cloud_shadow(L, x, y, fp)
+        col *= (1-0.45*shh)[..., None]
     # atmosphere on the ground
     h_cam = cam.alt
     mu = cosi
     warm = TL.warmth(t)
     col = atmosphere(col, d.astype(np.float32), h_cam, hh, mu, None, warm)
+    # high real clouds (Himawari-8, same instant), seen through the air above and below them
+    if cam.alt > 40000:
+        hc, hcov, hd = hi_clouds(L, C, d, cam, pix_ang)
+        if hcov.max() > 0:
+            k_fade = float(np.clip((cam.alt-40000)/60000, 0, 1))
+            mu_h = np.clip(np.abs((d*(C/np.linalg.norm(C))).sum(-1)), 0.02, 1).astype(np.float32)
+            hc = atmosphere(hc, d.astype(np.float32), cam.alt, np.full(hcov.shape, 7000.0, np.float32), mu_h, None, TL.warmth(t))
+            hcov = hcov*k_fade*hit
+            col = col*(1-hcov[..., None])+hc*hcov[..., None]
     # clouds
     t_cl = time.time()
     if fp.min() < 3000 and cam.alt < 400000:
-        Wfun = lambda xx, yy, ff: level_weights(L, xx, yy, ff)
+        Wfun = lambda xx, yy, ff: level_weights(L, xx, yy, ff/3.0)     # clouds: always the finest cloud field
         ccol, cov, cdist = clouds(L, C, d, cam, (pix_ang/np.sqrt(cosi)).astype(np.float32), t, tt, hit, Wfun)
         if cov.max() > 0:
             # cloud tops seen through the air above them
@@ -369,6 +481,15 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
             ccol = atmosphere(ccol, d.astype(np.float32), h_cam, hc, mu_c, None, warm)
             col = col*(1-cov[..., None])+ccol*cov[..., None]
     t_cle = time.time()
+    # Seliu in the light: +25 % on the island and its reef, -30 % around it (after the air, like a grade);
+    # the lift is weighted toward mid-tones so the white sand ring does not bloom
+    if light is not None and TL.glow(t) > 0:
+        gl = TL.glow(t)
+        lum = (col*np.array([0.2126, 0.7152, 0.0722], np.float32)).sum(-1)
+        mid = np.clip(1-(lum-0.10)/0.25, 0.25, 1)
+        up, down = (0.25, 0.30) if os.environ.get("SELIU_LOOK") != "warm" else (0.34, 0.38)
+        k = 1+gl*(up*light*mid-down*(1-light)*near_seliu)
+        col *= k[..., None]
     # beyond the limb / above the horizon
     if (~hit).any():
         dz = (d@(C/np.linalg.norm(C))).astype(np.float32)
@@ -404,6 +525,26 @@ def screen_speed(t, W, H, dt=1/TL.FPS):
     v = np.linalg.norm(p1-p0, axis=-1)
     return float(np.median(v)), float(v.max())
 
+def flow_blur(img, t, W, H, shutter=0.5, taps=9):
+    """motion blur from the real camera motion: every pixel is smeared along its own screen path during a
+    180-degree shutter (ground points reprojected with the camera at t -/+ shutter/2 frames)"""
+    dt = shutter/TL.FPS
+    c = cam_at(t, W, H); c0, c1 = cam_at(t-dt/2, W, H), cam_at(t+dt/2, W, H)
+    d = c.rays(); C = c.pos
+    b = d@C; disc = b*b-(C@C-R_E**2)
+    tt = np.where(disc > 0, -b-np.sqrt(np.maximum(disc, 0)), 1e8)
+    P = C+d*tt[..., None]
+    p0, _ = c0.project(P); p1, _ = c1.project(P)
+    v = (p1-p0).astype(np.float32)
+    mag = np.linalg.norm(v, axis=-1)
+    if mag.max() < 0.75: return img
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+    acc = np.zeros_like(img)
+    for k in range(taps):
+        f = k/(taps-1)-0.5
+        acc += cv2.remap(img, xs+v[..., 0]*f, ys+v[..., 1]*f, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    return acc/taps
+
 def blur_offsets(t, W, H):
     """shutter 180 deg (1/50 s): enough sub-frames that each moves < ~1.5 px"""
     med, mx = screen_speed(t, W, H)
@@ -420,7 +561,10 @@ def main():
     ap.add_argument("--from_", type=float, default=0); ap.add_argument("--to", type=float, default=TL.DURATION)
     ap.add_argument("--every", type=int, default=1); ap.add_argument("--shard", default="0/1")
     ap.add_argument("--noblur", action="store_true"); ap.add_argument("--final", action="store_true")
+    ap.add_argument("--subframes", action="store_true", help="true multi-sample motion blur (slow)")
+    ap.add_argument("--workers", type=int, default=1, help="forked workers sharing the textures")
     ap.add_argument("--clean", action="store_true", help="with --final: no graphics")
+    ap.add_argument("--clean_dir", default=None, help="with --final: also write the no-text version here")
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True)
     L = load_levels()
     if a.mode == "stills": jobs = [(None, t) for t in a.times]
@@ -428,27 +572,44 @@ def main():
         n0, n1 = int(round(a.from_*TL.FPS)), int(round(a.to*TL.FPS))
         jobs = [(f, f/TL.FPS) for f in range(n0, n1, a.every)]
     k, K = map(int, a.shard.split("/")); jobs = jobs[k::K]
+    if a.workers > 1:
+        # fork after loading: the textures are shared copy-on-write between the workers (memory ~ halved)
+        import gc; gc.collect(); gc.freeze()
+        kids = []
+        for wk in range(1, a.workers):
+            pid = os.fork()
+            if pid == 0:
+                jobs = jobs[wk::a.workers]; kids = None; break
+            kids.append(pid)
+        if kids is not None:
+            jobs = jobs[0::a.workers]
     for f, t in jobs:
         name = f"t{t:06.2f}" if f is None else f"f{f:05d}"
         png = os.path.join(a.out, name+".png")
         if f is not None and os.path.exists(png): continue           # resume
         t0 = time.time()
-        offs = [0.0] if a.noblur else blur_offsets(t, a.w, a.h)
+        offs = blur_offsets(t, a.w, a.h) if a.subframes else [0.0]
         acc = None; st = {}
         for dt in offs:
             im, matte = render_frame(t+dt, L, a.w, a.h, a.ss, want_matte=True, stats=st)
             acc = im if acc is None else acc+im
         img = acc/len(offs)
+        if not a.noblur and not a.subframes:
+            img = flow_blur(img, t, a.w, a.h)
         cp = TL.camera(t)
         rec = {"t": t, "frame": f, "camera": dict(zip(["lat", "lon", "range_m", "heading", "tilt", "roll"], cp)), "vfov": TL.VFOV,
                "alt_m": st.get("alt"), "subframes": len(offs), "sec": round(time.time()-t0, 1), "timing": {k: round(v, 2) for k, v in st.items() if k != "alt"}}
         if a.final:
             import grade_v8 as G, motion_gfx_v8 as M
             x = G.grade(img, t, matte)
+            seed = (f or int(t*1000))
+            if a.clean_dir:
+                os.makedirs(a.clean_dir, exist_ok=True)
+                cv2.imwrite(os.path.join(a.clean_dir, name+".png"), cv2.cvtColor(G.finish(x*TL.fade(t), seed=seed), cv2.COLOR_RGB2BGR))
             if not a.clean:
                 x = M.draw(x, t, cam_at(t, a.w, a.h), fmt=TL.FMT)
             x = x*TL.fade(t)
-            out = G.finish(x, seed=(f or int(t*1000)))
+            out = G.finish(x, seed=seed)
             cv2.imwrite(png, cv2.cvtColor(out, cv2.COLOR_RGB2BGR))
         else:
             cv2.imwrite(png, cv2.cvtColor((np.clip(img, 0, 1)*65535+0.5).astype(np.uint16), cv2.COLOR_RGB2BGR))
@@ -456,6 +617,9 @@ def main():
                 cv2.imwrite(os.path.join(a.out, name+"_matte.png"), (np.clip(matte, 0, 1)*255+0.5).astype(np.uint8))
         json.dump(rec, open(os.path.join(a.out, name+".json"), "w"))
         print(name, f"alt={rec['alt_m']/1000:.1f}km sub={len(offs)} {rec['sec']}s", rec["timing"], flush=True)
+    if a.workers > 1:
+        if kids is None: os._exit(0)
+        for pid in kids: os.waitpid(pid, 0)
 
 if __name__ == "__main__":
     main()

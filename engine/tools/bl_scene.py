@@ -15,10 +15,11 @@ def opt(k, d, f=float):
     return f(argv[argv.index(k)+1]) if k in argv else d
 W, H = opt("--w", 1920, int), opt("--h", 1080, int)
 SPP = opt("--spp", 96, int); CLOUDS = opt("--clouds", 1, int); TSHIFT = opt("--t", None)
+PREFIX = argv[argv.index("--prefix")+1] if "--prefix" in argv else "L2"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 D = lambda *p: os.path.join(ROOT, "data", *p)
-SUN_AZ, SUN_EL = 47.0, 57.0
-WIND = (-14.0, 9.0)
+SUN_AZ, SUN_EL = 46.0, 57.5
+WIND = (-6.0, 4.0)
 os.makedirs(outdir, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -26,7 +27,8 @@ sc = bpy.context.scene
 
 # ---------------------------------------------------------------- terrain mesh
 t0 = time.time()
-V = np.load(D("bl", "L2_verts.npy")); UV = np.load(D("bl", "L2_uv.npy")); n = V.shape[0]
+V = np.load(D("bl", f"{PREFIX}_verts.npy")); UV = np.load(D("bl", f"{PREFIX}_uv.npy")); n = V.shape[0]
+META = json.load(open(D("bl", f"{PREFIX}_meta.json"))) if os.path.exists(D("bl", f"{PREFIX}_meta.json")) else {"cx": 0, "cy": 0, "half": 32000, "base": 720.0, "dome_max": 420.0}
 me = bpy.data.meshes.new("L2")
 me.vertices.add(n*n); me.vertices.foreach_set("co", V.reshape(-1))
 i = np.arange(n*n).reshape(n, n)
@@ -49,7 +51,7 @@ def np_image(name, arr, channels):
     img.pack()
     return img
 
-alb = np_image("albedo", np.load(D("bl", "L2_albedo.npy")), 4)
+alb = np_image("albedo", np.load(D("bl", f"{PREFIX}_albedo.npy")), 4)
 mat = bpy.data.materials.new("ground"); mat.use_nodes = True
 nt = mat.node_tree; N = nt.nodes; L = nt.links; N.clear()
 out = N.new("ShaderNodeOutputMaterial")
@@ -82,11 +84,11 @@ wd.node_tree.links.new(sky.outputs[0], bg.inputs[0]); wd.node_tree.links.new(bg.
 
 # ---------------------------------------------------------------- real clouds, volumetric
 if CLOUDS:
-    cl = np_image("cloud", np.load(D("bl", "L2_cloud.npy")), 1)
-    BASE, TOP = 720.0, 1000.0
+    cl = np_image("cloud", np.load(D("bl", f"{PREFIX}_cloud.npy")), 1)
+    BASE, TOP = META["base"], META["base"]+META["dome_max"]
     bpy.ops.mesh.primitive_cube_add(size=1)
     cb = bpy.context.active_object; cb.name = "clouds"
-    cb.scale = (64000, 64000, TOP-BASE); cb.location = (0, 0, (BASE+TOP)/2)
+    cb.scale = (2*META["half"], 2*META["half"], TOP-BASE); cb.location = (META["cx"], META["cy"], (BASE+TOP)/2)
     cm = bpy.data.materials.new("cloud"); cm.use_nodes = True
     T_ = cm.node_tree; n_ = T_.nodes; l_ = T_.links; n_.clear()
     o = n_.new("ShaderNodeOutputMaterial")
@@ -102,10 +104,10 @@ if CLOUDS:
         return m
     shift = n_.new("ShaderNodeValue"); shift.name = "wind_t"; shift.outputs[0].default_value = 0.0
     ux = math_node("ADD", sep.outputs[0], None, vb=0.5)
-    wx = math_node("MULTIPLY", shift.outputs[0], None, vb=-WIND[0]/64000)
+    wx = math_node("MULTIPLY", shift.outputs[0], None, vb=-WIND[0]/(2*META["half"]))
     ux2 = math_node("ADD", ux.outputs[0], wx.outputs[0])
     uy = math_node("ADD", sep.outputs[1], None, vb=0.5)
-    wy = math_node("MULTIPLY", shift.outputs[0], None, vb=-WIND[1]/64000)
+    wy = math_node("MULTIPLY", shift.outputs[0], None, vb=-WIND[1]/(2*META["half"]))
     uy2 = math_node("ADD", uy.outputs[0], wy.outputs[0])
     cmb = n_.new("ShaderNodeCombineXYZ"); l_.new(ux2.outputs[0], cmb.inputs[0]); l_.new(uy2.outputs[0], cmb.inputs[1])
     # small domain warp so the 10 m mask edges become billowy, not pixel blobs

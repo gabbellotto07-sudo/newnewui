@@ -18,15 +18,15 @@ def params(t):
     P = dict(
         wb=G._lerp3([0.97, 0.99, 1.04], [0.995, 1.0, 1.005], [1.03, 1.008, 0.962], wo, ws),
         expo=float(G._lerp3(0.98, 1.0, 1.03, wo, ws)),
-        contrast=float(G._lerp3(1.28, 1.24, 1.20, wo, ws)),
+        contrast=float(G._lerp3(1.30, 1.30, 1.27, wo, ws)),
         pivot=float(G._lerp3(0.40, 0.46, 0.52, wo, ws)),
-        toe=float(G._lerp3(0.008, 0.012, 0.016, wo, ws)),
+        toe=float(G._lerp3(0.004, 0.006, 0.008, wo, ws)),
         sat=float(G._lerp3(0.95, 0.97, 0.97, wo, ws)),
         vib=float(G._lerp3(0.05, 0.07, 0.08, wo, ws)),
         cyan_den=float(G._lerp3(0.07, 0.11, 0.12, wo, ws)),
         split_sh=float(G._lerp3(1.3, 1.1, 0.8, wo, ws)),
         split_hi=float(G._lerp3(0.6, 1.0, 1.4, wo, ws)),
-        clarity=float(G._lerp3(0.14, 0.20, 0.18, wo, ws)),
+        clarity=float(G._lerp3(0.16, 0.24, 0.24, wo, ws)),
         halation=float(G._lerp3(0.04, 0.05, 0.06, wo, ws)),
         vignette=float(G._lerp3(0.26, 0.20, 0.16, wo, ws)),
         topgrad=float(G._lerp3(0.0, 0.07, 0.08, wo, ws)),
@@ -50,19 +50,36 @@ def _greens(x, amt):
     y *= (l/np.maximum(y@LUM, 1e-4))[..., None]           # luminance kept
     return y
 
+def _no_lavender(x):
+    """bare soil and clearings seen through blue air drift to lavender: pull r>g<b, low-chroma pixels to warm earth"""
+    r, g, b = x[..., 0], x[..., 1], x[..., 2]
+    w = np.clip((np.minimum(r, b)-g)/0.04, 0, 1)*np.clip(1-(np.maximum(r, b)-np.minimum(r, g))/0.25, 0, 1)
+    l = x@LUM
+    earth = l[..., None]*np.array([1.10, 0.98, 0.84], np.float32)
+    return x*(1-w[..., None]*0.8)+earth*(w[..., None]*0.8)
+
 def _sand(x, amt):
     """bright, low-chroma warm flats (beach, reef flats): roll the top off a little and warm them"""
     l = x@LUM
-    w = np.clip((l-0.62)/0.3, 0, 1)
+    w = np.clip((l-0.55)/0.3, 0, 1)
     w = w*w*(3-2*w)*amt
-    y = x*(1-0.10*w)[..., None]
-    y = y+(w*0.02)[..., None]*np.array([0.9, 0.4, -0.6], np.float32)
+    y = x*(1-0.16*w)[..., None]
+    y = y+(w*0.025)[..., None]*np.array([0.9, 0.4, -0.6], np.float32)
     return y
 
+import os
+def params_warm(t):
+    """variant B: a later-morning warmth on the arrival (more golden air, deeper sea), same structure"""
+    P = params(t); ws = G._ramp(t, 15.5, 21.0)
+    P["wb"] = np.asarray(P["wb"])*np.array([1+0.035*ws, 1+0.006*ws, 1-0.05*ws], np.float32)
+    P["cyan_den"] = P["cyan_den"]+0.05*ws; P["split_hi"] = P["split_hi"]+0.6*ws; P["contrast"] = P["contrast"]+0.03*ws
+    return P
+
 def grade(img, t, matte=None):
-    G.params = params                                        # v8 timing for every step of grade_cine
+    G.params = params_warm if os.environ.get("SELIU_LOOK") == "warm" else params
     x = G.grade(img, t)
     ws = G._ramp(t, 12.0, 18.0)
     x = _greens(x, 0.6+0.4*ws)
+    x = _no_lavender(x)
     x = _sand(x, ws)
     return np.clip(x, 0, 1).astype(np.float32)
