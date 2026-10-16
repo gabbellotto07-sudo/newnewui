@@ -55,9 +55,17 @@ def _unvignette(x, amt):
     vig = 1-0.20*amt*np.clip((rr-0.38)/0.62, 0, 1)**1.8
     return x/vig[..., None]
 
+def _neutral_black(x, amt):
+    """space: the split toning turned the black navy; deep shadows go neutral (the limb keeps its blue)"""
+    if amt <= 0: return x
+    l = x@LUM
+    k = 1-amt*np.clip(1-l/0.035, 0, 1)
+    return l[..., None]+(x-l[..., None])*k[..., None]
+
 def grade(img, t, matte=None):
     x = G8.grade(img, t, matte)
     x = _unvignette(x, _ramp(t, 8.0, 10.0)*(1-_ramp(t, 15.0, 17.0)))
+    x = _neutral_black(x, 1-_ramp(t, 4.0, 7.0))
     x = _dehaze(x, _ramp(t, 8.0, 10.5)*(1-_ramp(t, 15.0, 17.5)))
     x = _sea(x, _ramp(t, 11.0, 14.0)*(1-0.40*_ramp(t, 19.0, 22.0)))
     return np.clip(x, 0, 1).astype(np.float32)

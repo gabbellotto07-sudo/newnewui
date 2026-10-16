@@ -24,7 +24,7 @@ lon13, lat13 = scn["B13"].attrs["area"].get_lonlats()
 t13 = np.asarray(scn["B13"].values, np.float32)
 t13 = cv2.resize(t13, (b[0].shape[1], b[0].shape[0]), interpolation=cv2.INTER_LINEAR)
 # keep the Sundaland window only (memory)
-win = (lon > 90) & (lon < 125) & (lat > -20) & (lat < 15)
+win = (lon > 72) & (lon < 135) & (lat > -35) & (lat < 22)          # v9: wider (the 9:16 orbit saw the cut)
 rows = np.nonzero(win.any(1))[0]; cols = np.nonzero(win.any(0))[0]
 r0, r1, c0, c1 = rows[0], rows[-1]+1, cols[0], cols[-1]+1
 lon, lat = lon[r0:r1, c0:c1], lat[r0:r1, c0:c1]; b = [x[r0:r1, c0:c1] for x in b]; t13 = t13[r0:r1, c0:c1]
@@ -36,6 +36,14 @@ tsurf = float(np.nanpercentile(t13[np.isfinite(t13) & (wmin < 0.08)], 75))
 cold = np.clip((tsurf-t13-2.5)/6.0, 0, 1)                 # a cloud is colder than the surface under it
 op = white*cold; op = op*op*(3-2*op)
 op = np.where(ok, op, 0).astype(np.float32)
+# v9: near Himawari's own limb (view zenith > ~62 deg, west of ~80 E here) its pixels are stretched into streaks:
+# those clouds are removed (soft), never replaced
+_la, _lo = np.radians(np.where(ok, lat, 0)), np.radians(np.where(ok, lon, 0))
+_n = np.stack([np.cos(_la)*np.cos(_lo), np.cos(_la)*np.sin(_lo), np.sin(_la)], -1)
+_s = np.array([np.cos(np.radians(140.7)), np.sin(np.radians(140.7)), 0.0])*42164.0e3
+_v = _s-_n*6371.0e3; _v /= np.linalg.norm(_v, axis=-1, keepdims=True)
+vza = np.degrees(np.arccos(np.clip((_n*_v).sum(-1), -1, 1))); del _la, _lo, _n, _v
+op *= np.clip((66.0-vza)/8.0, 0, 1).astype(np.float32)
 # v9: the cloud's own measured brightness (TOA reflectance, mean of the three visible bands), same instant and sun
 bright = np.where(ok, (b[0]+b[1]+b[2])/3, 0).astype(np.float32)
 print("surface 10.4 um temperature", round(tsurf, 1), "K")

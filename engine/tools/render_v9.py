@@ -395,7 +395,71 @@ def tone(x, look=LOOK):
     return y*(1-c)+(y*y*(3-2*y))*c
 
 def space_sky(d, C):
-    return R5.sky(d, C, None)
+    """v9: the limb seen from orbit, physical: the in-scatter of the column a ray grazes at its tangent height
+    (Chapman grazing column ~ exp(-h/H) sqrt(2 pi R H)), so the atmosphere is a thin layered rim, not a wide halo:
+    white-cyan where the column is thick, deep blue above, a faint violet (ozone absorption) higher up; dimmer
+    where the tangent point is in shadow. The black is neutral."""
+    b = d@C
+    rmin = np.sqrt(np.maximum(C@C-b*b, 0)); h = np.where(b < 0, rmin-R_E, np.linalg.norm(C)-R_E)
+    h = np.maximum(h, 0).astype(np.float32)
+    g = math.sqrt(2*math.pi*R_E)
+    odR = (np.exp(-h/HR)*math.sqrt(HR)*g)[..., None]*BR
+    odM = (np.exp(-h/HM)*math.sqrt(HM)*g*BM)[..., None]
+    Pt = C+d*np.where(b < 0, -b, 0)[..., None]
+    nt = Pt/np.linalg.norm(Pt, axis=-1, keepdims=True)
+    lit = np.clip((nt@SUN+0.10)/0.30, 0, 1).astype(np.float32)[..., None]
+    c = (d@SUN).astype(np.float32)
+    pr = (0.75*(1+c*c))[..., None]; pm = phase_mie(c)[..., None]
+    ins = (1-np.exp(-odR))*SKY_R*pr*LIMB_GAIN+(1-np.exp(-odM))*SKY_M*(0.35+0.18*pm)*LIMB_GAIN
+    w = (0.22*np.exp(-((h-38000.0)/14000.0)**2))[..., None]
+    lum = (ins*np.array([0.2126, 0.7152, 0.0722], np.float32)).sum(-1, keepdims=True)
+    ins = ins*(1-w)+lum*np.array([0.62, 0.48, 1.05], np.float32)*w
+    return (BLACK+ins*lit).astype(np.float32)
+
+LIMB_GAIN = 3.5
+BLACK = np.array([0.0011, 0.0011, 0.0013], np.float32)
+
+# ------------------------------------------------------------------ the real stars (Yale Bright Star Catalogue)
+_STARS = None
+def _stars():
+    global _STARS
+    if _STARS is None:
+        a = np.array(json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "stars_bsc_mag45.json")))["stars"], np.float64)
+        a = a[a[:, 2] < 4.0]
+        # J2000 RA -> Earth-fixed longitude at 2019-07-29 03:20 UTC (Greenwich mean sidereal time)
+        D = 2458693.6388889-2451545.0
+        gmst = (280.46061837+360.98564736629*D) % 360.0
+        lon = np.radians(a[:, 0]-gmst); dec = np.radians(a[:, 1])
+        v = np.stack([np.cos(dec)*np.cos(lon), np.cos(dec)*np.sin(lon), np.sin(dec)], -1)
+        bv = a[:, 3]
+        col = np.where(bv[:, None] < 0.3, [0.90, 0.94, 1.0], np.where(bv[:, None] < 1.0, [1.0, 0.98, 0.94], [1.0, 0.90, 0.80]))
+        col = 0.15*col+0.85                               # saturation <= 15 %
+        # plate values: after the grade's toe and the motion blur the brightest end at ~7 % of white, mag 4 at ~2 %
+        bright = 0.66*10**(-0.4*0.35*np.clip(a[:, 2], -1.5, 4.0))
+        _STARS = (v, col.astype(np.float32), bright.astype(np.float32))
+    return _STARS
+
+def add_stars(img, t, W, H):
+    """faint real stars in the black, fixed in the sky; they fade together 1.2 -> 2.2 s as the exposure adapts"""
+    k_t = 1-(lambda x: x*x)(min(max((t-1.2)/1.0, 0.0), 1.0))
+    if k_t <= 0: return img
+    cam = cam_at(t, W, H)
+    v, col, br = _stars()
+    P = cam.pos+v*1e13
+    p, z = cam.project(P)
+    b = v@cam.pos; disc = b*b-(cam.pos@cam.pos-R_E**2)
+    ok = (z > 0) & ~((disc > 0) & (b < 0)) & (p[:, 0] > -3) & (p[:, 0] < W+3) & (p[:, 1] > -3) & (p[:, 1] < H+3)
+    s = 0.75*min(W, H)/1080; r = int(math.ceil(3*s))+1
+    for (x, y), c, a in zip(p[ok], col[ok], br[ok]):
+        ix, iy = int(round(x)), int(round(y))
+        x0, x1, y0, y1 = max(ix-r, 0), min(ix+r+1, W), max(iy-r, 0), min(iy+r+1, H)
+        if x1 <= x0 or y1 <= y0: continue
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        gk = np.exp(-((xx-x)**2+(yy-y)**2)/(2*s*s)); gk /= max(gk.max(), 1e-6)
+        patch = img[y0:y1, x0:x1]
+        dark = np.clip((0.10-patch.mean(-1))/0.08, 0, 1)        # only in the black, never over the limb
+        img[y0:y1, x0:x1] = patch+(gk*dark*a*k_t)[..., None]*c
+    return img
 
 # ------------------------------------------------------------------ surface: tin mines, sand, reef flats
 KNEE, KNEE_SLOPE = 0.13, 0.50
@@ -506,7 +570,9 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
             k_fade = float(np.clip((cam.alt-40000)/60000, 0, 1))
             mu_h = np.clip(np.abs((d*(C/np.linalg.norm(C))).sum(-1)), 0.02, 1).astype(np.float32)
             hc = atmosphere(hc, d.astype(np.float32), cam.alt, np.full(hcov.shape, 7000.0, np.float32), mu_h, None, TL.warmth(t))
-            hcov = hcov*k_fade*hit
+            # v9: seen almost edge-on near the limb the 1-2 km cloud field streaks into lines: there the real
+            # clouds sink into the haze (they are foreshortened below a pixel anyway)
+            hcov = hcov*k_fade*hit*np.clip((cosi-0.05)/0.20, 0, 1)
             col = col*(1-hcov[..., None])+hc*hcov[..., None]
     # clouds
     t_cl = time.time()
@@ -541,6 +607,16 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
         col = np.where(hit[..., None], col*edge+sky*(1-edge), sky)
     img = tone(col)
     if ss != 1: img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)
+    if cam.alt > 600000:                                   # v9: lens diffusion from the real bright limb (<= 6 %)
+        k = min(W, H)/1080
+        sky_only = np.where(cv2.resize((~hit).astype(np.float32), (W, H), interpolation=cv2.INTER_AREA)[..., None] > 0.5, img, 0)
+        src = np.clip(sky_only-0.08, 0, 1)
+        small = cv2.resize(src, (W//4, H//4), interpolation=cv2.INTER_AREA)
+        bl = 0.6*cv2.GaussianBlur(small, (0, 0), 3.0*k)+0.4*cv2.GaussianBlur(small, (0, 0), 9.0*k)
+        bl = cv2.resize(bl, (W, H), interpolation=cv2.INTER_LINEAR)
+        kd = float(np.clip((cam.alt-600000)/600000, 0, 1))
+        img = 1-(1-img)*(1-np.clip(0.55*kd*bl, 0, 0.06))
+    if cam.alt > 1000000: img = add_stars(img, t, W, H)
     matte = None
     if want_matte and light is not None:
         matte = cv2.resize(np.clip(light, 0, 1).astype(np.float32), (W, H), interpolation=cv2.INTER_AREA)

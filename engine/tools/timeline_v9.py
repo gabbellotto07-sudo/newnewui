@@ -33,7 +33,8 @@ KEYS = [
     (31.0, -3.230,  107.538,    10.6, -17.4,  60.8,   0.2),   # beyond the cut: keeps the drift alive on the last frame
 ]
 if FMT == "9x16":
-    KEYS = KEYS[:6]+[
+    # v9: the taller frame saw Australia's red interior at the bottom of the orbit: look a little higher
+    KEYS = [(0.0, 5.00, 103.50, 7200, 18.0, 62.0, -1.2), (3.6, -1.70, 105.55, 3800, -6.0, 58.0, 0.6)]+KEYS[2:6]+[
         (15.3, -3.12,   107.64,     40,   -18.0,  55.0,   1.5),
         (18.0, -3.204,  107.575,    14.0,  -70.0,  59.0,   2.5),
         (21.0, -3.208,  107.560,    11.8, -98.0,  58.5,   1.0),
@@ -57,6 +58,11 @@ def camera(t):
     hd += w*(0.30*np.sin(2*np.pi*0.067*t+0.4)+0.10*np.sin(2*np.pi*0.173*t))
     tl += w*(0.20*np.sin(2*np.pi*0.089*t+1.3)+0.07*np.sin(2*np.pi*0.21*t+0.7))
     rl += w*(0.25*np.sin(2*np.pi*0.11*t+2.1))
+    # v9: the aircraft before it: a slow, barely felt float in the descent (never a shake)
+    w2 = ramp(t, 1.0, 4.0)*(1-ramp(t, 15.5, 17.5))
+    hd += w2*(0.16*np.sin(2*np.pi*0.071*t+0.9)+0.06*np.sin(2*np.pi*0.19*t+2.0))
+    tl += w2*(0.12*np.sin(2*np.pi*0.093*t+0.2))
+    rl += w2*(0.35*np.sin(2*np.pi*0.083*t+1.7)+0.10*np.sin(2*np.pi*0.23*t))
     return lat, lon, float(np.exp(_r(t)))*1000.0, hd, tl, rl
 
 def fade(t):            # from black in 0.6 s; the camera is already moving

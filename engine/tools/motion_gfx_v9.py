@@ -132,7 +132,9 @@ def title_A(cv, t, name, sub, t_in, sub_in, t_out, sub_out):
     k = cv.k; W, H = cv.W, cv.H
     V = cv.fmt == "9x16"
     x = (0.075 if V else 0.062)*W
-    y = (0.775 if V else 0.835)*H                       # title baseline
+    # 16:9 bottom-left; 9:16 top-left (in the vertical frame the crossing runs bottom -> top and the phone UI
+    # owns the bottom): the title sits on the far sea, under the top safe margin
+    y = (0.205 if V else 0.835)*H                       # title baseline
     a, pad, asc, desc, w = text_block(name, "title", k, 0.78 if V else 1.0)
     p, o = presence(t, t_in, t_out, 1.25)
     if p > 0 and o > 0:
