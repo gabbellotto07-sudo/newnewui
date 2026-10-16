@@ -113,7 +113,7 @@ def build(fmt="16x9"):
     r1 = loop_to(load("mk_1201.wav", 2.0), N); r2 = loop_to(load("mk_2495.wav", 5.0), N)
     rare = filt(0.7*r1+0.6*r2, "highpass", 2500, 3); rare = filt(rare, "lowpass", 11000)
     rare *= (1+0.25*np.sin(2*np.pi*0.09*t+0.6))[:, None]                # a slow breathing of the air
-    e = env_pts(N, [(0, 0.0), (0.5, 0.7), (3, 1.0), (9, 0.85), (13, 0.5), (16.6, 0.25), (17.1, 0.0), (28, 0)], 0.7)
+    e = env_pts(N, [(0, 0.0), (0.9, 0.7), (3, 1.0), (9, 0.85), (13, 0.5), (16.5, 0.3), (17.9, 0.12), (19.5, 0.0), (28, 0)], 0.9)
     stems["air_rare"] = width(rare, 1.15)*e[:, None]*db(-15)
     # orbit tone: a low A with its harmonics (audible on a phone through the 2nd-4th partials), very slow swell
     f0 = 55.0
@@ -124,13 +124,13 @@ def build(fmt="16x9"):
     tone *= 1+0.06*np.sin(2*np.pi*0.13*t)
     e = env_pts(N, [(0, 0.0), (0.3, 0.6), (3, 1.0), (7, 0.8), (10.5, 0.35), (13.5, 0.0), (28, 0)], 0.8)
     tone = filt(tone, "highpass", 150)
-    stems["orbit_tone"] = np.stack([tone, np.roll(tone, 37)], 1)*e[:, None]*db(-34)
+    stems["orbit_tone"] = np.stack([tone, np.roll(tone, 37)], 1)*e[:, None]*0.0   # v9: removed (read as an electric hum)
     # ---------------------------------------------------------------- 2. descent wind, driven by the camera
     w1 = loop_to(load("mk_1172.wav"), N); w2 = loop_to(load("mk_2658.wav", 3.0), N); w3 = loop_to(load("mk_1200.wav"), N)
     wind = filt(0.55*w1+0.6*w2+0.35*w3, "highpass", 120)
     # v9: until the dive the low wind rumble is cut (high-pass 260 Hz), then it opens to 120 Hz
     lowpart = wind-filt(wind, "highpass", 260)
-    wind = wind-lowpart*(1-env_pts(N, [(0, 0), (13.0, 0), (15.0, 1), (28, 1)], 0.3))[:, None]
+    wind = wind-lowpart*(1-env_pts(N, [(0, 0), (12.5, 0), (16.0, 1), (28, 1)], 0.8))[:, None]
     air = cv["air"]
     g = np.clip(air, 0, 1)**1.3
     fc = 350+5200*np.clip(air*1.15, 0, 1)**1.6                       # the filter opens with speed
@@ -167,7 +167,8 @@ def build(fmt="16x9"):
     e = env_pts(N, [(0, 0), (breath_b+1.0, 0.0), (breath_b+3, 0.7), (28, 0.8)], 0.5)
     stems["breeze"] = width(breeze, 1.2)*e[:, None]*db(-20)
     # the breath itself: everything else ducks; a held, very soft air keeps it from sounding like a gap
-    duck = 1-0.92*env_pts(N, [(0, 0), (breath_a-0.15, 0), (breath_a+0.1, 1), (breath_b-0.1, 1), (breath_b+0.35, 0), (28, 0)], 0.12)
+    # v9: softer edges (the reviewer heard a cut): in over 0.55 s, out over 0.8 s, never a full silence
+    duck = 1-0.85*env_pts(N, [(0, 0), (breath_a-0.45, 0), (breath_a+0.1, 1), (breath_b-0.15, 1), (breath_b+0.65, 0), (28, 0)], 0.25)
     held = filt(loop_to(load("mk_1275.wav", 4.0), N), "lowpass", 2500)
     e = env_pts(N, [(0, 0), (breath_a-0.2, 0), (breath_a+0.15, 1), (breath_b, 0.8), (breath_b+0.6, 0), (28, 0)], 0.1)
     stems["breath_air"] = width(held, 0.8)*e[:, None]*db(-14)
@@ -187,7 +188,7 @@ def build(fmt="16x9"):
     stems["gfx"] = gfx_layer(N, fmt)
     # ---------------------------------------------------------------- mix
     for k in stems:
-        if k != "breath_air": stems[k] = stems[k]*duck[:, None]
+        if k not in ("breath_air", "air_rare"): stems[k] = stems[k]*duck[:, None]
     return stems
 
 def width_curve(x, w):

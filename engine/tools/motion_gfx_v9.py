@@ -58,7 +58,7 @@ T = dict(
 OUT = 0.8                                                 # every exit: a plain fade of 0.8 s
 
 # sound touches for sound_v9 (very small, under everything)
-SOUND_CUES = [dict(t=T["bel_title"][0], kind="title", db=-34, pan=-0.3), dict(t=T["seliu_title"], kind="title", db=-33, pan=-0.3)]
+SOUND_CUES = []                                           # v9: no touches under the titles (the reviewer heard a click)
 
 # ------------------------------------------------------------------ text as an alpha block
 def text_block(s, style, k, scale=1.0):
@@ -330,7 +330,7 @@ def wake(cv, cam, t):
     tx, ty = np.gradient(X), np.gradient(Y); tl = np.hypot(tx, ty)+1e-9
     nx, ny = -ty/tl, tx/tl
     age = u-ss                                            # 0 at the head
-    half = 8.0+120.0*np.clip(age/0.6, 0, 1)**0.75         # metres: the wake opens behind the boat
+    half = 10.0+170.0*np.clip(age/0.6, 0, 1)**0.75        # metres: the wake opens behind the boat
     al = np.exp(-age/0.28)*0.95+0.12*np.exp(-age/1.4)     # bright near the head, a faint long trail
     al = al*fade*np.clip(ss/0.03, 0, 1)
     def P(x, y):
@@ -353,9 +353,9 @@ def wake(cv, cam, t):
             cv2.fillConvexPoly(sub, np.round((quad-[x0, y0])*16).astype(np.int32), 255, cv2.LINE_AA, shift=4)
             np.maximum(acc[y0:y1, x0:x1], sub.astype(np.float32)/255*a_, out=acc[y0:y1, x0:x1])
         return acc
-    soft = cv2.GaussianBlur(strip(half, al*0.90), (0, 0), 1.8*SS*k)       # the opened, foamy water
+    soft = cv2.GaussianBlur(strip(half, np.clip(al*1.15, 0, 1)), (0, 0), 1.8*SS*k)   # the opened, foamy water
     core_al = np.exp(-age/0.10)*fade                                      # the bright line dies fast behind
-    core = cv2.GaussianBlur(strip(half*0.16+2.0, core_al), (0, 0), 0.7*SS)  # the boat
+    core = cv2.GaussianBlur(strip(half*0.18+4.0, core_al), (0, 0), 0.7*SS)  # the boat
     cv.over(np.clip(soft+core*0.85, 0, 1), 0, 0, INK)
     cv.glow_poly(pc[-min(len(pc), 50):], 4*k, GOLD, 0.35*fade)
     if u < 1:

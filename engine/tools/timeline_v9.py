@@ -29,8 +29,8 @@ KEYS = [
     (17.8, -3.221,  107.524,    13.5,  14.0,  62.0,  -3.0),   # out of the clouds: Seliu ahead, banking into the turn
     (20.8, -3.228,  107.537,    12.6,  -7.0,  60.0,  -1.2),   # v9: target ~1 km further south than v8, so the
     (24.0, -3.230,  107.538,    11.5, -12.0,  60.0,  -0.4),   # island sits higher and the sea below it is free
-    (28.0, -3.230,  107.538,    11.0, -15.0,  60.5,   0.0),   # the hold: a slow helicopter drift, never still
-    (31.0, -3.230,  107.538,    10.6, -17.4,  60.8,   0.2),   # beyond the cut: keeps the drift alive on the last frame
+    (28.0, -3.230,  107.538,    10.2, -15.0,  60.5,   0.0),   # the hold: v9 a slow push-in under the drift, never still
+    (31.0, -3.230,  107.538,     9.4, -16.6,  60.8,   0.2),   # beyond the cut: keeps the drift alive on the last frame
 ]
 if FMT == "9x16":
     # v9: the taller frame saw Australia's red interior at the bottom of the orbit: look a little higher
@@ -39,8 +39,8 @@ if FMT == "9x16":
         (18.0, -3.204,  107.575,    14.0,  -70.0,  59.0,   2.5),
         (21.0, -3.208,  107.560,    11.8, -98.0,  58.5,   1.0),
         (24.0, -3.210,  107.554,    10.7, -106.0, 58.0,   0.3),
-        (28.0, -3.210,  107.553,    10.4, -108.0, 58.2,   0.0),
-        (31.0, -3.210,  107.552,    10.1, -109.5, 58.4,   0.2),
+        (28.0, -3.210,  107.553,     9.7, -108.0, 58.2,   0.0),
+        (31.0, -3.210,  107.552,     9.0, -109.2, 58.4,   0.2),
     ]
 _k = np.array(KEYS, float)
 _f = {i: PchipInterpolator(_k[:, 0], _k[:, i]) for i in (1, 2, 4, 5, 6)}
@@ -65,8 +65,8 @@ def camera(t):
     rl += w2*(0.35*np.sin(2*np.pi*0.083*t+1.7)+0.10*np.sin(2*np.pi*0.23*t))
     return lat, lon, float(np.exp(_r(t)))*1000.0, hd, tl, rl
 
-def fade(t):            # from black in 0.6 s; the camera is already moving
-    return ramp(t, 0.02, 0.6)
+def fade(t):            # from black in 0.9 s (v9, was 0.6); the camera is already moving
+    return ramp(t, 0.0, 0.9)
 
 def glow(t):            # Seliu catches the light as the camera leaves the clouds
     return ramp(t, 16.8, 20.8)
