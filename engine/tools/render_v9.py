@@ -485,7 +485,7 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
     t_0 = time.time()
     d = cam.rays().astype(np.float64); C = cam.pos
     b = d@C; cc = C@C-R_E**2; disc = b*b-cc
-    hit = disc > 0
+    hit = (disc > 0) & (b < 0)                         # (the intro looks away from the Earth: never hit behind)
     tt = np.where(hit, -b-np.sqrt(np.maximum(disc, 0)), 0)
     P = C+d*tt[..., None]
     x, y, _ = to_xy(P)

@@ -66,6 +66,7 @@ def camera(t):
     return lat, lon, float(np.exp(_r(t)))*1000.0, hd, tl, rl
 
 def fade(t):            # from black in 0.9 s (v9, was 0.6); the camera is already moving
+    if os.environ.get("SELIU_NOFADE"): return 1.0      # the version with the brand intro: the pan lands on frame 0
     return ramp(t, 0.0, 0.9)
 
 def glow(t):            # Seliu catches the light as the camera leaves the clouds
