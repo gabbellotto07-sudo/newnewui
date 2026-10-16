@@ -24,7 +24,7 @@ KEYS = [
     (6.8,  -2.55,   106.45,   1850,     3.0,  45.0,   1.4),   # flights: Singapore far, Jakarta near, Belitung right
     (9.9,  -2.84,   107.62,    470,    12.0,  38.0,   1.2),   # bending toward Belitung
     (11.6, -2.90,   107.76,    290,    16.0,  39.0,   0.4),   # BELITUNG: the camera settles...
-    (12.9, -2.95,   107.81,    232,    19.0,  41.0,   0.0),   # ...almost still under the title
+    (12.4, -2.945,  107.805,   240,    18.5,  40.8,   0.1),   # v9: the hold ends earlier, so the dive gathers speed over ~1.6 s   # ...almost still under the title
     (15.5, -3.13,   107.50,     36,    32.0,  56.0,  -2.0),   # dive over the real cumulus field, south-west of Seliu
     (17.8, -3.221,  107.524,    13.5,  14.0,  62.0,  -3.0),   # out of the clouds: Seliu ahead, banking into the turn
     (20.8, -3.228,  107.537,    12.6,  -7.0,  60.0,  -1.2),   # v9: target ~1 km further south than v8, so the
