@@ -6,3 +6,5 @@ frames/
 /blender/
 __pycache__/
 engine/data
+audio/src/*.wav
+audio/test_v8/
