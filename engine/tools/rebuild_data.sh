@@ -33,6 +33,15 @@ for d in "20190729 S2B" "20260808 S2A" "20260801 S2B" "20260806 S2C" "20260811 S
 [ -f data/L2_cop.npy ] || python3 tools/fetch_cop.py L2
 [ -f data/LM_cop.npy ] || python3 tools/fetch_cop.py LM
 [ -f data/LM_tex.npy ] || python3 tools/build_lm.py 20190729 20260808 20260801 20260806 20260811 20260826 20260920 20260722 20260622
+# v9: LM water keeps its 2026 detail but takes its large-scale tone from the hero day (29-07-2019, L1 before injection)
+if [ ! -f data/.lm_harmonized ]; then
+  step v9 LM water harmonization
+  cp data/L1_tex.npy data/L1_tex_keep.npy
+  python3 tools/build_level.py L1 S2B_48MYB_20190729_1_L2A S2B_48MZB_20190729_0_L2A S2B_48MZC_20190729_0_L2A S2B_48MYC_20190729_0_L2A
+  mv data/L1_tex.npy data/L1_own.npy; mv data/L1_tex_keep.npy data/L1_tex.npy
+  python3 tools/harmonize_lm_water.py
+  touch data/.lm_harmonized; rm -f data/.injected_v8
+fi
 if [ ! -f data/.injected_v8 ]; then
   step rebuild L0 LG + exact injection
   python3 tools/build_level.py L0; python3 tools/build_level.py LG
@@ -48,5 +57,5 @@ for band in B01:R10 B02:R10 B03:R10 B13:R20; do      # full-disk single files; B
   b=${band%:*}; r=${band#*:}; f=HS_H08_20190729_0320_${b}_FLDK_${r}_S0101.DAT
   [ -f data/himawari/$f ] || { curl -sSf --retry 5 -o data/himawari/$f.bz2 $B/$f.bz2 && bunzip2 -f data/himawari/$f.bz2; }
 done
-[ -f data/L0_hcloud.npy ] || python3 tools/build_himawari.py LG L0
+[ -f data/L0_hbright.npy ] || python3 tools/build_himawari.py LG L0      # v9: also writes the measured brightness
 step DATA_DONE
