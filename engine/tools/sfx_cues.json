@@ -1,0 +1,309 @@
+{
+ "fps": 25,
+ "duration_s": 25.0,
+ "sample_rate": 48000,
+ "loudness_target_lufs": -26.0,
+ "note": "Cue grafici sincronizzati con tools/motion_gfx.py (dizionario T). level_db = picco indicativo del singolo cue prima della normalizzazione del mix; pan -1 sinistra .. +1 destra (dalla posizione a schermo 16:9). Da mixare sotto l'ambiente v5 (-20 LUFS): il mix grafico esce a -26 LUFS.",
+ "cues": [
+  {
+   "time_s": 2.3,
+   "frame": 57,
+   "type": "glint",
+   "duration_s": 0.9,
+   "pan": -0.12,
+   "level_db": -30,
+   "description": "SINGAPORE: il punto nasce (anello sottile)"
+  },
+  {
+   "time_s": 2.4,
+   "frame": 60,
+   "type": "letters_air",
+   "duration_s": 1.2,
+   "pan": -0.05,
+   "level_db": -36,
+   "description": "SINGAPORE: lettere che si posano, aria granulare",
+   "params": {
+    "letters": 9
+   }
+  },
+  {
+   "time_s": 2.8,
+   "frame": 70,
+   "type": "glint",
+   "duration_s": 0.9,
+   "pan": 0.02,
+   "level_db": -31,
+   "description": "JAKARTA: il punto nasce (un tono sotto Singapore)",
+   "params": {
+    "pitch": 0.89
+   }
+  },
+  {
+   "time_s": 2.9,
+   "frame": 72,
+   "type": "letters_air",
+   "duration_s": 1.2,
+   "pan": 0.04,
+   "level_db": -37,
+   "description": "JAKARTA: lettere",
+   "params": {
+    "letters": 7
+   }
+  },
+  {
+   "time_s": 4.2,
+   "frame": 105,
+   "type": "line_shimmer",
+   "duration_s": 2.8,
+   "pan": -0.1,
+   "level_db": -32,
+   "description": "Arco Singapore -> Belitung: luccichio d'aria che segue la testa",
+   "params": {
+    "pan_end": 0.12
+   }
+  },
+  {
+   "time_s": 4.7,
+   "frame": 118,
+   "type": "line_shimmer",
+   "duration_s": 2.8,
+   "pan": 0.02,
+   "level_db": -33,
+   "description": "Arco Jakarta -> Belitung",
+   "params": {
+    "pan_end": 0.12,
+    "seed": 7
+   }
+  },
+  {
+   "time_s": 5.3,
+   "frame": 132,
+   "type": "wipe_breath",
+   "duration_s": 1.0,
+   "pan": 0.06,
+   "level_db": -37,
+   "description": "Direct flights: respiro morbido della tendina"
+  },
+  {
+   "time_s": 7.0,
+   "frame": 175,
+   "type": "arrival_tick",
+   "duration_s": 0.6,
+   "pan": 0.12,
+   "level_db": -31,
+   "description": "Arrivo del primo arco su Belitung (punto + anello)"
+  },
+  {
+   "time_s": 7.02,
+   "frame": 176,
+   "type": "glint",
+   "duration_s": 1.0,
+   "pan": 0.12,
+   "level_db": -32,
+   "description": "Arrivo: riflesso",
+   "params": {
+    "pitch": 1.12
+   }
+  },
+  {
+   "time_s": 7.5,
+   "frame": 188,
+   "type": "glint",
+   "duration_s": 1.0,
+   "pan": 0.12,
+   "level_db": -36,
+   "description": "Secondo arrivo: riflesso più tenue",
+   "params": {
+    "pitch": 1.0
+   }
+  },
+  {
+   "time_s": 7.55,
+   "frame": 189,
+   "type": "letters_air",
+   "duration_s": 1.0,
+   "pan": 0.16,
+   "level_db": -38,
+   "description": "BELITUNG (piccolo) accanto all'arrivo",
+   "params": {
+    "letters": 8
+   }
+  },
+  {
+   "time_s": 8.2,
+   "frame": 205,
+   "type": "dissolve",
+   "duration_s": 1.3,
+   "pan": 0.1,
+   "level_db": -36,
+   "description": "Le linee si ritirano dentro Belitung, le scritte si sciolgono"
+  },
+  {
+   "time_s": 10.2,
+   "frame": 255,
+   "type": "title_swell",
+   "duration_s": 2.6,
+   "pan": 0.0,
+   "level_db": -28,
+   "description": "Titolo BELITUNG: gonfiore caldo e aria (non un 'braam')",
+   "params": {
+    "root": 110.0
+   }
+  },
+  {
+   "time_s": 10.9,
+   "frame": 272,
+   "type": "rule_tick",
+   "duration_s": 0.8,
+   "pan": 0.0,
+   "level_db": -39,
+   "description": "Filo sottile che cresce dal centro"
+  },
+  {
+   "time_s": 11.15,
+   "frame": 279,
+   "type": "wipe_breath",
+   "duration_s": 1.1,
+   "pan": 0.0,
+   "level_db": -38,
+   "description": "Sottotitolo Bangka Belitung Islands · Indonesia"
+  },
+  {
+   "time_s": 13.0,
+   "frame": 325,
+   "type": "dissolve",
+   "duration_s": 0.9,
+   "pan": 0.0,
+   "level_db": -37,
+   "description": "Uscita del titolo BELITUNG"
+  },
+  {
+   "time_s": 14.4,
+   "frame": 360,
+   "type": "riser",
+   "duration_s": 3.9,
+   "pan": -0.05,
+   "level_db": -31,
+   "description": "Salita delicata verso Seliu: culmina alla chiusura del contorno"
+  },
+  {
+   "time_s": 15.9,
+   "frame": 398,
+   "type": "outline_shimmer",
+   "duration_s": 2.4,
+   "pan": -0.2,
+   "level_db": -31,
+   "description": "Contorno di Seliu: due teste che partono dal pontile e girano la costa",
+   "params": {
+    "spread": 0.5
+   }
+  },
+  {
+   "time_s": 17.05,
+   "frame": 426,
+   "type": "title_swell",
+   "duration_s": 2.6,
+   "pan": -0.1,
+   "level_db": -30,
+   "description": "Titolo SELIU ISLAND",
+   "params": {
+    "root": 130.81
+   }
+  },
+  {
+   "time_s": 18.05,
+   "frame": 451,
+   "type": "wipe_breath",
+   "duration_s": 1.1,
+   "pan": -0.1,
+   "level_db": -38,
+   "description": "Sottotitolo Off the south-west coast of Belitung"
+  },
+  {
+   "time_s": 18.3,
+   "frame": 458,
+   "type": "flash_bloom",
+   "duration_s": 2.6,
+   "pan": -0.2,
+   "level_db": -28,
+   "description": "Il contorno si chiude e cede la luce all'isola"
+  },
+  {
+   "time_s": 19.0,
+   "frame": 475,
+   "type": "glint",
+   "duration_s": 0.9,
+   "pan": 0.32,
+   "level_db": -32,
+   "description": "TELUK GEMBIRA: il punto nasce",
+   "params": {
+    "pitch": 0.94
+   }
+  },
+  {
+   "time_s": 19.15,
+   "frame": 479,
+   "type": "letters_air",
+   "duration_s": 1.0,
+   "pan": 0.36,
+   "level_db": -38,
+   "description": "TELUK GEMBIRA: lettere",
+   "params": {
+    "letters": 12
+   }
+  },
+  {
+   "time_s": 19.8,
+   "frame": 495,
+   "type": "line_shimmer",
+   "duration_s": 2.6,
+   "pan": 0.32,
+   "level_db": -35,
+   "description": "Rotta in barca: luccichio più basso e acquatico, da destra a sinistra",
+   "params": {
+    "pan_end": -0.1,
+    "low": true,
+    "seed": 3
+   }
+  },
+  {
+   "time_s": 21.0,
+   "frame": 525,
+   "type": "wipe_breath",
+   "duration_s": 1.0,
+   "pan": 0.1,
+   "level_db": -38,
+   "description": "15–20 min by boat"
+  },
+  {
+   "time_s": 22.4,
+   "frame": 560,
+   "type": "arrival_tick",
+   "duration_s": 0.6,
+   "pan": -0.08,
+   "level_db": -32,
+   "description": "Arrivo al pontile del villaggio"
+  },
+  {
+   "time_s": 22.42,
+   "frame": 560,
+   "type": "glint",
+   "duration_s": 1.1,
+   "pan": -0.08,
+   "level_db": -33,
+   "description": "Arrivo: riflesso",
+   "params": {
+    "pitch": 1.0
+   }
+  },
+  {
+   "time_s": 22.5,
+   "frame": 562,
+   "type": "glint_pass",
+   "duration_s": 2.2,
+   "pan": -0.2,
+   "level_db": -39,
+   "description": "Un solo riflesso di luce che corre la costa di Seliu"
+  }
+ ]
+}

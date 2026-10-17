@@ -1,0 +1,198 @@
+{
+ "projection": "+proj=aeqd +lat_0=-3.215 +lon_0=107.532 +datum=WGS84 +units=m",
+ "pixel_to_metres": "x = -half_m + (col + 0.5) * px_m ; y = half_m - (row + 0.5) * px_m",
+ "plates": {
+  "LG": {
+   "description": "Continent (\u00b13600 km): ESA WorldCover 2021 S2 mosaic + bathymetry-coloured sea",
+   "size_px": 4000,
+   "half_m": 3600000,
+   "px_m": 1800,
+   "layers": {
+    "color_16bit": "LG_color_16bit.png",
+    "preview": "LG_color_preview.jpg",
+    "land_mask": "LG_land_mask.png"
+   },
+   "anchors_px": {
+    "singapore": [
+     1769.7,
+     1719.2
+    ],
+    "jakarta": [
+     1957.3,
+     2183.4
+    ],
+    "tjq": [
+     2013.3,
+     1970.7
+    ],
+    "teluk_gembira_pier": [
+     2002.8,
+     1998.4
+    ],
+    "seliu_landing": [
+     2000.3,
+     1998.5
+    ],
+    "seliu_label": [
+     1998.9,
+     1999.9
+    ],
+    "seliu_south_tip": [
+     1998.7,
+     2002.0
+    ],
+    "changi": [
+     1780.4,
+     1718.4
+    ],
+    "cgk": [
+     1945.6,
+     2178.3
+    ],
+    "belitung_centre": [
+     2024.1,
+     1977.7
+    ],
+    "seliu": [
+     1999.5,
+     1999.5
+    ]
+   }
+  },
+  "L0": {
+   "description": "Region (\u00b11700 km): Singapore, Jakarta, Sumatra, Borneo, Java",
+   "size_px": 4250,
+   "half_m": 1700000,
+   "px_m": 800,
+   "layers": {
+    "color_16bit": "L0_color_16bit.png",
+    "preview": "L0_color_preview.jpg",
+    "land_mask": "L0_land_mask.png"
+   },
+   "anchors_px": {
+    "singapore": [
+     1607.5,
+     1493.7
+    ],
+    "jakarta": [
+     2029.5,
+     2538.4
+    ],
+    "tjq": [
+     2155.4,
+     2059.6
+    ],
+    "teluk_gembira_pier": [
+     2132.0,
+     2122.1
+    ],
+    "seliu_landing": [
+     2126.3,
+     2122.3
+    ],
+    "seliu_label": [
+     2123.1,
+     2125.5
+    ],
+    "seliu_south_tip": [
+     2122.7,
+     2130.2
+    ],
+    "changi": [
+     1631.5,
+     1492.0
+    ],
+    "cgk": [
+     2003.2,
+     2526.9
+    ],
+    "belitung_centre": [
+     2179.8,
+     2075.4
+    ],
+    "seliu": [
+     2124.5,
+     2124.5
+    ]
+   }
+  },
+  "L1": {
+   "description": "Belitung (\u00b1230 km): land ESA 2021, Belitung shelf water Sentinel-2 29-07-2019",
+   "size_px": 4600,
+   "half_m": 230000,
+   "px_m": 100,
+   "layers": {
+    "color_16bit": "L1_color_16bit.png",
+    "preview": "L1_color_preview.jpg",
+    "land_mask": "L1_land_mask.png",
+    "clouds_alpha": "L1_clouds_alpha_16bit.png"
+   },
+   "anchors_px": {
+    "tjq": [
+     2547.0,
+     1780.4
+    ],
+    "teluk_gembira_pier": [
+     2359.2,
+     2279.9
+    ],
+    "seliu_landing": [
+     2313.8,
+     2282.2
+    ],
+    "seliu_label": [
+     2288.4,
+     2307.2
+    ],
+    "seliu_south_tip": [
+     2285.1,
+     2344.8
+    ],
+    "belitung_centre": [
+     2742.0,
+     1907.0
+    ],
+    "seliu": [
+     2299.5,
+     2299.5
+    ]
+   }
+  },
+  "L2": {
+   "description": "Seliu (\u00b132 km, 10 m/px): sea Sentinel-2 29-07-2019 (cloud-cleaned), land Sentinel-2 Aug 2026",
+   "size_px": 6400,
+   "half_m": 32000,
+   "px_m": 10,
+   "layers": {
+    "color_16bit": "L2_color_16bit.png",
+    "preview": "L2_color_preview.jpg",
+    "land_mask": "L2_land_mask.png",
+    "clouds_alpha": "L2_clouds_alpha_16bit.png",
+    "seliu_light_matte": "L2_seliu_light_matte_16bit.png"
+   },
+   "anchors_px": {
+    "teluk_gembira_pier": [
+     3796.4,
+     3003.8
+    ],
+    "seliu_landing": [
+     3342.9,
+     3027.0
+    ],
+    "seliu_label": [
+     3088.4,
+     3276.9
+    ],
+    "seliu_south_tip": [
+     3055.0,
+     3652.9
+    ],
+    "seliu": [
+     3199.5,
+     3199.5
+    ]
+   }
+  }
+ },
+ "clouds_note": "Real clouds of 29-07-2019 lifted off the ground: put them ~850 m above the sea; their shadows fall to the SW (sun azimuth 47 deg, elevation 57 deg): offset ~550 m toward azimuth 227 deg."
+}

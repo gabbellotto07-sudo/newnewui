@@ -1,0 +1,12 @@
+{
+ "_doc": "Raw library shots. Each: 10 s, eased start/end (smootherstep), params = [lat, lon, slant range km, heading deg (0 = north up), tilt deg from nadir]. Camera looks at lat/lon.",
+ "S01_orbit_limb":        {"dur": 10, "a": [-0.60, 105.40, 5800, -14, 62],  "b": [-1.00, 106.00, 5400, -6, 60],  "note": "Orbit, Earth limb and atmosphere at top, SE Asia below"},
+ "S02_region_nadir_push": {"dur": 10, "a": [-2.30, 105.90, 2600, -5, 3],    "b": [-2.42, 106.25, 2000, -3, 3],   "note": "Region top-down: Singapore, Jakarta, Belitung all in frame (flights)"},
+ "S03_region_to_belitung":{"dur": 10, "a": [-2.42, 106.25, 2000, -3, 3],    "b": [-2.80, 107.45, 520, -1, 4],    "note": "Descent from region toward Belitung"},
+ "S04_belitung_rotate":   {"dur": 10, "a": [-2.86, 107.85, 235, -8, 8],     "b": [-2.86, 107.85, 205, 10, 10],   "note": "Whole Belitung island, slow rotation + push (title)"},
+ "S05_belitung_sw_dive":  {"dur": 10, "a": [-2.98, 107.68, 130, 1, 8],      "b": [-3.15, 107.585, 46, -4, 22],   "note": "Dive toward Belitung's SW coast, real clouds of the day pass below"},
+ "S06_seliu_topdown":     {"dur": 10, "a": [-3.212, 107.550, 30, -10, 0.5], "b": [-3.214, 107.545, 21, 5, 0.5],  "note": "Seliu + Teluk Gembira straight down, slow push and turn (map-like reading)"},
+ "S07_seliu_arc":         {"dur": 10, "a": [-3.214, 107.540, 16, -60, 48],  "b": [-3.214, 107.540, 16, 10, 48],  "note": "Oblique arc around Seliu (70 deg), parallax with real clouds"},
+ "S08_pier_to_seliu":     {"dur": 10, "a": [-3.204, 107.575, 17, -90, 52],  "b": [-3.206, 107.556, 13.5, -90, 55],"note": "From Teluk Gembira jetty looking west toward Seliu: the crossing, slow dolly in (vertical-friendly)"},
+ "S09_seliu_hold":        {"dur": 10, "a": [-3.221, 107.543, 16.8, -13.5, 52], "b": [-3.221, 107.542, 16.2, -15, 52.5], "note": "Final 3/4 composition (Seliu left, jetty right), almost still: room for titles"}
+}
