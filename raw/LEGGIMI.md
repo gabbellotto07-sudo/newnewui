@@ -92,3 +92,13 @@ python3 tools/sound_v9.py ../frames/snd --fmt 16x9 --target -20 && python3 tools
 ```
 
 Per il 4K: `--w 3840 --h 2160` e `python3 tools/raw_tracking.py OUT.csv 3840 2160`.
+
+## Verifica (`verifica/`)
+
+- **Contact sheet a 1 fps:** nessun salto di colore o di luce fra i livelli.
+- **Nitidezza per fotogramma** (|Laplaciano| medio della luminanza, al centro e in una griglia 4×4).
+- **Con la Terra in quadro (dopo 4 s)**, il cambio tipico da un fotogramma all'altro è dello 0,4 %.
+- **Intorno al vecchio punto del pop (~17 s qui):** nessun gradino.
+- **Dove si spegneva il mosso (~26 s qui):** al massimo il 2 %.
+- **L'unico picco** (fino al 24 %) è a 18,8–19,1 s, nella cella in basso a sinistra: durante la picchiata sopra il campo di cumuli veri, nuvole e ombre attraversano la cella in pochi fotogrammi. È un cambio di contenuto e non di livello: al centro, nello stesso momento, il cambio è del 5–6 %.
+- **I salti molto grandi prima dei 4 s** sono l'ingresso della Terra nelle celle che prima erano solo cielo.
