@@ -118,11 +118,24 @@ def _corr_at(name, x, y):
     rr = (half-y)/(2*half)*n-0.5; cc = (x+half)/(2*half)*n-0.5
     return np.stack([map_coordinates(lc[..., c], [rr, cc], order=1, mode="nearest") for c in range(3)], -1)
 
+def blob(x, y, half, r0, r1, round_=False):
+    """raw v3: an organic border instead of the square: a rounded square (superellipse) or a circle, with a slow
+    irregular wobble, smoothstep from 1 (inside r0) to 0 (beyond r1); always 0 at the data's real edge"""
+    u, v = x/half, y/half
+    r = np.hypot(u, v) if round_ else (np.abs(u)**4+np.abs(v)**4)**0.25
+    wob = (0.055*np.sin(2*np.pi*u/0.55+1.3)*np.sin(2*np.pi*v/0.47+0.4)+0.035*np.sin(2*np.pi*(u+v)/0.31+2.1)
+           +0.03*np.sin(2*np.pi*(u-0.6*v)/0.23+0.7))
+    r = r*(1+wob)
+    k = np.clip((r1-r)/(r1-r0), 0, 1); k = k*k*(3-2*k)
+    return np.minimum(k, np.clip((1-np.maximum(np.abs(u), np.abs(v)))/0.03, 0, 1)).astype(np.float32)
+
+def level_blob(name, x, y, half, inner=0.0):
+    if name == "L2": return blob(x, y, half, 0.50-inner, 0.92, round_=True)
+    return blob(x, y, half, 0.55-inner, 0.96)
+
 def _interior(name, x, y, half):
     """0 at the level's border -> 1 well inside (where it no longer meets the coarser level)"""
-    if name == "L2": return np.clip((30000-np.hypot(x, y))/20000, 0, 1)
-    q = np.maximum(np.abs(x), np.abs(y))/half
-    e = np.clip((1-q)/0.30, 0, 1); return e*e*(3-2*e)
+    return level_blob(name, x, y, half, inner=0.2)
 
 def level_rgb(L, name, x, y, fp, m, bias=-0.5):
     """raw v2: one coherent globe. A finer level (Belitung LM, the L1/L2 squares) takes the large-scale colour of
@@ -222,9 +235,7 @@ def level_weights(L, x, y, fp):
         lv = L[name]
         if name == last:
             W[name] = rem; break
-        ew = lv["rgb"].edge(x, y)
-        if name == "L2": ew = np.minimum(ew, np.clip((30000-np.hypot(x, y))/14000, 0, 1))
-        if name == "LM": ew = lv["rgb"].edge(x, y, feather=0.20)
+        ew = level_blob(name, x, y, lv["half"])          # raw v3: organic, wide, never a straight line
         # raw: no footprint threshold any more (it popped at ~14 s): every pixel samples the finest level that
         # covers it, mip-mapped trilinearly; levels only meet spatially, at their feathered borders, where the
         # finer level's colours are matched to the coarser one at load time (harmonize)
