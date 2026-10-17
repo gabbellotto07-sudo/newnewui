@@ -136,6 +136,13 @@ def level_rgb(L, name, x, y, fp, m, bias=-0.5):
     e = _interior(name, xs, ys, lv["half"])
     cpx = CORR[name][2]
     fmin = np.exp((1-e)*np.log(cpx)+e*np.log(lv["px"]))
+    # open water: its fine texture (waves, glint) only exists inside the finer square, so from afar it is limited
+    # to the coarser level's resolution everywhere and comes back only close up (footprint 150 -> 25 m)
+    if "land" in lv:
+        wat = 1-np.clip(lv["land"].sample(xs, ys, np.maximum(fs, cpx)), 0, 1)
+        c = np.clip((np.log2(150.0)-np.log2(np.maximum(fs, 1e-3)))/(np.log2(150.0)-np.log2(25.0)), 0, 1)
+        fw = np.exp((1-c)*np.log(cpx)+c*np.log(lv["px"]))
+        fmin = np.maximum(fmin, wat*fw+(1-wat)*lv["px"])
     fpe = fp.copy(); fpe[m] = np.maximum(fs, fmin)
     out = lv["rgb"].sample(x, y, fpe, mask=m, bias=bias)
     kf = np.clip((np.log2(np.maximum(fs, 1e-3))-np.log2(25.0))/(np.log2(300.0)-np.log2(25.0)), 0, 1)
