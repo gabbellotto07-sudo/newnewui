@@ -66,6 +66,6 @@ def grade(img, t, matte=None):
     x = G8.grade(img, t, matte)
     x = _unvignette(x, _ramp(t, 8.0, 10.0)*(1-_ramp(t, 15.0, 17.0)))
     x = _neutral_black(x, 1-_ramp(t, 4.0, 7.0))
-    x = _dehaze(x, _ramp(t, 8.0, 10.5)*(1-_ramp(t, 15.0, 17.5)))
+    x = _dehaze(x, 2.2*_ramp(t, 8.0, 10.5)*(1-_ramp(t, 15.5, 18.0)))     # raw: Belitung clearer, natural contrast
     x = _sea(x, _ramp(t, 11.0, 14.0)*(1-0.40*_ramp(t, 19.0, 22.0)))
     return np.clip(x, 0, 1).astype(np.float32)

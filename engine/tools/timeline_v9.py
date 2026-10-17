@@ -14,11 +14,13 @@ from scipy.interpolate import PchipInterpolator
 
 FMT = os.environ.get("SELIU_FMT", "16x9")
 FPS = 25
-DURATION = 28.0
+DURATION = 38.0         # raw delivery: 28 s + 10 s of slow drift over Seliu
+T_START = -3.0          # raw delivery: 3 s before the old first frame; the Earth enters from below
 VFOV = 36.0 if FMT == "16x9" else 58.0
 
 #       t      lat       lon      range_km  head   tilt   roll
 KEYS = [
+    (-3.0,  5.40,   102.10,   9800,   -31.0,  64.0,  -2.0),   # raw: earlier, further out, same course
     (0.0,   2.60,   103.20,   7600,   -27.0,  63.0,  -1.6),   # orbit: travelling south-east, turning right
     (3.6,  -1.70,   105.55,   3800,    -6.0,  54.0,   0.6),
     (6.8,  -2.55,   106.45,   1850,     3.0,  45.0,   1.4),   # flights: Singapore far, Jakarta near, Belitung right
@@ -30,11 +32,14 @@ KEYS = [
     (20.8, -3.228,  107.537,    12.6,  -7.0,  60.0,  -1.2),   # v9: target ~1 km further south than v8, so the
     (24.0, -3.230,  107.538,    11.5, -12.0,  60.0,  -0.4),   # island sits higher and the sea below it is free
     (28.0, -3.230,  107.538,    10.2, -15.0,  60.5,   0.0),   # the hold: v9 a slow push-in under the drift, never still
-    (31.0, -3.230,  107.538,     9.4, -16.6,  60.8,   0.2),   # beyond the cut: keeps the drift alive on the last frame
+    (31.0, -3.230,  107.538,     9.4, -16.6,  60.8,   0.2),
+    (35.0, -3.2305, 107.5382,    8.75, -18.4,  61.1,   0.1),   # raw: 10 s more of slow drift over Seliu
+    (38.0, -3.231,  107.5384,    8.35, -19.6,  61.3,   0.0),
+    (41.0, -3.2312, 107.5385,    8.05, -20.5,  61.4,   0.1),   # beyond the end: the drift never stops
 ]
 if FMT == "9x16":
     # v9: the taller frame saw Australia's red interior at the bottom of the orbit: look a little higher
-    KEYS = [(0.0, 5.00, 103.50, 7200, 18.0, 62.0, -1.2), (3.6, -1.70, 105.55, 3800, -6.0, 58.0, 0.6)]+KEYS[2:6]+[
+    KEYS = [(-3.0, 7.6, 102.6, 9400, 14.0, 63.0, -1.6), (0.0, 5.00, 103.50, 7200, 18.0, 62.0, -1.2), (3.6, -1.70, 105.55, 3800, -6.0, 58.0, 0.6)]+KEYS[2:6]+[
         (15.3, -3.12,   107.64,     40,   -18.0,  55.0,   1.5),
         (18.0, -3.204,  107.575,    14.0,  -70.0,  59.0,   2.5),
         (21.0, -3.208,  107.560,    11.8, -98.0,  58.5,   1.0),
@@ -51,7 +56,7 @@ def ramp(t, a, b):
 
 def camera(t):
     """-> lat, lon, range_m, heading, tilt, roll"""
-    t = float(np.clip(t, 0, DURATION+0.5))
+    t = float(np.clip(t, T_START, DURATION+0.5))
     lat, lon, hd, tl, rl = (float(_f[i](t)) for i in (1, 2, 4, 5, 6))
     # the final approach breathes like a helicopter hold: tiny, incommensurate, never a loop
     w = ramp(t, 17.0, 21.0)
@@ -76,4 +81,10 @@ def warmth(t):          # 0 = cold orbit, 1 = warm arrival: drives grade and atm
     return ramp(t, 4.0, 12.0)*0.45+ramp(t, 13.0, 20.0)*0.55
 
 def haze(t):            # ground haze multiplier: full in orbit (the blue planet), thinner in the descent
-    return 1.0-0.45*ramp(t, 5.0, 10.0)+0.15*ramp(t, 15.0, 19.0)
+    # raw: Belitung clearer (less blue-violet veil) between 8 and 17 s, back to v9 for the arrival
+    return 1.0-0.45*ramp(t, 5.0, 10.0)-0.40*ramp(t, 8.0, 11.0)*(1-ramp(t, 15.5, 18.5))+0.15*ramp(t, 15.0, 19.0)
+
+def look_up(t):         # raw: before t=0 the camera looks above the Earth and tilts down onto it (deg, eased,
+    if t >= 0: return 0.0          # zero speed and acceleration at both ends: no whip, lands on the old frame 0)
+    x = min(max((t-T_START)/(0.0-T_START), 0.0), 1.0)
+    return 30.0*(1-x*x*x*(x*(x*6-15)+10))

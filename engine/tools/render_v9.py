@@ -57,7 +57,12 @@ class Camera(R5.Camera):
 
 def cam_at(t, W, H):
     p = TL.camera(t)
-    return Camera(*p[:5], vfov=TL.VFOV, W=W, H=H, roll=p[5])
+    c = Camera(*p[:5], vfov=TL.VFOV, W=W, H=H, roll=p[5])
+    a = math.radians(TL.look_up(t)) if hasattr(TL, "look_up") else 0.0
+    if a:                                     # raw: before t=0 the camera looks above the Earth, tilting down
+        f, u = c.f, c.u
+        c.f, c.u = math.cos(a)*f+math.sin(a)*u, math.cos(a)*u-math.sin(a)*f
+    return c
 
 # ------------------------------------------------------------------ textures (uint16 mip pyramids)
 class Tex:
@@ -105,6 +110,27 @@ def cloud_domes(a, px):
     h = np.minimum(h, DOME_MAX)*np.clip(a/0.45, 0, 1)
     return cv2.GaussianBlur(h, (0, 0), 0.8)
 
+COARSER = {"L0": "LG", "L1": "L0", "LM": "L1", "L2": "LM"}
+def harmonize(name, rgb, half, px, L):
+    """raw: the finer level's large-scale colour is matched to the coarser level's toward its own border (outer
+    45 %), so where the two meet nothing changes in colour; the interior and all the fine detail are untouched"""
+    cn = COARSER.get(name)
+    rgb = rgb.astype(np.float32, copy=False)
+    if cn not in L: return rgb
+    n = 192; g = ((np.arange(n)+0.5)/n*2-1)*half
+    X, Y = np.meshgrid(g, -g)
+    c = L[cn]["rgb"].sample(X, Y, np.full(X.shape, 2*half/n, np.float32))
+    f = cv2.resize(rgb, (n, n), interpolation=cv2.INTER_AREA)
+    lc = np.log(np.maximum(c, 2e-3))-np.log(np.maximum(f, 2e-3))
+    lc = np.clip(cv2.GaussianBlur(lc.astype(np.float32), (0, 0), 3.0), -0.35, 0.35)
+    e = np.maximum(np.abs(X), np.abs(Y))/half
+    k = np.clip((e-0.55)/0.35, 0, 1); k = (k*k*(3-2*k)).astype(np.float32)
+    corr = np.exp(lc*k[..., None]).astype(np.float32)
+    big = cv2.resize(corr, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_CUBIC)
+    print("harmonize", name, "to", cn, "max step %.1f %%" % (100*float(np.abs(np.expm1(lc*k[..., None])).max())), flush=True)
+    rgb *= big
+    return rgb
+
 LEVEL_FILES = {"LG": "LG_tex.npy", "L0": "L0_tex.npy", "L1": "L1_tex.npy", "LM": "LM_tex.npy", "L2": "L2_comp.npy"}
 RGB_SCALE = 65535/0.8
 
@@ -113,7 +139,8 @@ def load_levels(names=("LG", "L0", "L1", "LM", "L2"), clouds=True, relief=True):
     for name, half, px in LEVELS:
         if name not in names or not os.path.exists(D(LEVEL_FILES[name])): continue
         a = np.load(D(LEVEL_FILES[name]), mmap_mode="r")
-        lv = {"half": half, "px": px, "rgb": Tex(np.array(a[:3]).transpose(1, 2, 0), half, px, RGB_SCALE)}
+        rgb = harmonize(name, np.array(a[:3]).transpose(1, 2, 0), half, px, L)
+        lv = {"half": half, "px": px, "rgb": Tex(rgb, half, px, RGB_SCALE)}; del rgb
         if name in ("L0", "L1", "LM", "L2"):
             lv["land"] = Tex((np.array(a[3]) > 0.5).astype(np.float32), half, px, 65535.0)
         if clouds and os.path.exists(D(f"{name}_clouds.npy")):
@@ -161,8 +188,10 @@ def level_weights(L, x, y, fp):
         ew = lv["rgb"].edge(x, y)
         if name == "L2": ew = np.minimum(ew, np.clip((30000-np.hypot(x, y))/14000, 0, 1))
         if name == "LM": ew = lv["rgb"].edge(x, y, feather=0.07)
-        rw = np.clip((np.log2(LEVEL_REACH.get(name, 2.6)*lv["px"])-np.log2(np.maximum(fp, 1e-3)))/1.5, 0, 1)
-        w = ew*rw
+        # raw: no footprint threshold any more (it popped at ~14 s): every pixel samples the finest level that
+        # covers it, mip-mapped trilinearly; levels only meet spatially, at their feathered borders, where the
+        # finer level's colours are matched to the coarser one at load time (harmonize)
+        w = ew
         W[name] = w*rem; rem = rem*(1-w)
     return W
 
@@ -234,7 +263,7 @@ def clouds(L, C, d, cam, fp_unit, t, tt_ground, hit_ground, Wfun, n_steps=28):
     # far clouds (smaller than a few pixels): a soft layer averaged over the pixel footprint, like a real sensor
     okm, tm, _ = sphere_hits(C, d, R_E+CLOUD_BASE+120)
     fpm = np.maximum(fp_unit*np.where(okm, tm, 0), 1.0)
-    wd_all = np.clip((fpm-40.0)/40.0, 0, 1)*cand*okm*(tm > 0)
+    wd_all = np.clip((fpm-16.0)/22.0, 0, 1)*cand*okm*(tm > 0)     # raw: domes only where they are sharp (< ~30 m/px)
     if (wd_all > 0).any():
         jf = np.nonzero(wd_all > 0)
         Pm = C+d[jf]*tm[jf][:, None]
@@ -242,9 +271,11 @@ def clouds(L, C, d, cam, fp_unit, t, tt_ground, hit_ground, Wfun, n_steps=28):
         xm_ += -WIND[0]*t; ym_ += -WIND[1]*t
         Wf = Wfun(xm_, ym_, fpm[jf])
         # v9: sampled at the pixel footprint (v8: x4 and a mip bias, which smeared the real cumulus into veils)
-        af, _ = sample_field(L, "alpha", xm_, ym_, fpm[jf]*1.8, Wf, bias=0.35)
+        af, _ = sample_field(L, "alpha", xm_, ym_, fpm[jf]*1.8, Wf, bias=1.0)
         k_alt = float(np.clip(1-(cam.alt-20000)/90000, 0.10, 1.0))
-        cf = np.clip(af*0.85*k_alt, 0, 1)
+        # raw: cumulus smaller than the pixel cannot be drawn credibly (they read as snow): a faint soft veil only
+        k_far = 0.30*np.clip(1-(fpm[jf]-16.0)/240.0, 0.15, 1.0)
+        cf = np.clip(af*0.85*k_alt*k_far, 0, 1)
         cov[jf] = cf*wd_all[jf]; cdist[jf] = tm[jf]
         ccol[jf] = np.array([0.56, 0.575, 0.60], np.float32)*(0.90+0.10*cf[:, None])
     near = cand & (wd_all < 1)
@@ -322,7 +353,7 @@ def hi_fields(L, x, y, fp, bright=False):
     for name, w in (("L0", w0), ("LG", 1-w0)):
         m = w > 1e-4
         if m.any():
-            out_a += L[name]["hcl"].sample(x, y, np.maximum(fp, 1.6*L[name]["px"]), mask=m, bias=0.6)*w
+            out_a += L[name]["hcl"].sample(x, y, np.maximum(fp, 1.6*L[name]["px"]), mask=m, bias=1.3)*w
             out_h += L[name]["htop"].sample(x, y, np.maximum(fp, 1.6*L[name]["px"]), mask=m, bias=0.6)*w
             if bright and "hbr" in L[name]:
                 out_b += L[name]["hbr"].sample(x, y, np.maximum(fp, 1.2*L[name]["px"]), mask=m, bias=0.3)*w
@@ -365,7 +396,7 @@ def hi_clouds(L, C, d, cam, pix_ang):
     cool = np.clip((0.62-meas)/0.35, 0, 1)
     rgb = np.stack([val*(1-0.035*cool), val*(1+0.0*cool), val*(1+0.06*cool)], -1).astype(np.float32)
     # soft physical edges: thin cloud is translucent, no smoothstep cliff
-    cv_ = np.clip((a-0.02)/0.90, 0, 1)**1.15
+    cv_ = 0.62*np.clip((a-0.04)/0.90, 0, 1)**1.35      # raw: lighter and softer (no flat white patches)
     cov[idx] = cv_; col[idx] = rgb; dist[idx] = tt
     return col, cov, dist
 
@@ -417,6 +448,7 @@ def space_sky(d, C):
     return (BLACK+ins*lit).astype(np.float32)
 
 LIMB_GAIN = 3.5
+SKY_FLOOR = np.array([0x0B, 0x12, 0x22], np.float32)/255
 BLACK = np.array([0.0011, 0.0011, 0.0013], np.float32)
 
 # ------------------------------------------------------------------ the real stars (Yale Bright Star Catalogue)
@@ -441,8 +473,7 @@ def _stars():
 
 def add_stars(img, t, W, H):
     """faint real stars in the black, fixed in the sky; they fade together 1.2 -> 2.2 s as the exposure adapts"""
-    k_t = 1-(lambda x: x*x)(min(max((t-1.2)/1.0, 0.0), 1.0))
-    if k_t <= 0: return img
+    k_t = 1.0                                         # raw: the same discreet real stars all through the video
     cam = cam_at(t, W, H)
     v, col, br = _stars()
     P = cam.pos+v*1e13
@@ -457,7 +488,7 @@ def add_stars(img, t, W, H):
         yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
         gk = np.exp(-((xx-x)**2+(yy-y)**2)/(2*s*s)); gk /= max(gk.max(), 1e-6)
         patch = img[y0:y1, x0:x1]
-        dark = np.clip((0.10-patch.mean(-1))/0.08, 0, 1)        # only in the black, never over the limb
+        dark = np.clip((0.20-patch.mean(-1))/0.08, 0, 1)        # only in the black, never over the limb
         img[y0:y1, x0:x1] = patch+(gk*dark*a*k_t)[..., None]*c
     return img
 
@@ -616,6 +647,9 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
         bl = cv2.resize(bl, (W, H), interpolation=cv2.INTER_LINEAR)
         kd = float(np.clip((cam.alt-600000)/600000, 0, 1))
         img = 1-(1-img)*(1-np.clip(0.55*kd*bl, 0, 0.06))
+    if (~hit).any():                                   # raw: deep blue-black space (~#0B1222), screened under the limb
+        nh = cv2.resize((~hit).astype(np.float32), (W, H), interpolation=cv2.INTER_AREA)[..., None]
+        img = 1-(1-img)*(1-SKY_FLOOR*nh)
     if cam.alt > 1000000: img = add_stars(img, t, W, H)
     matte = None
     if want_matte and light is not None:
@@ -652,7 +686,7 @@ def flow_blur(img, t, W, H, shutter=0.5, taps=9):
     p0, _ = c0.project(P); p1, _ = c1.project(P)
     v = (p1-p0).astype(np.float32)
     mag = np.linalg.norm(v, axis=-1)
-    if mag.max() < 0.75: return img
+    if mag.max() < 0.02: return img                    # raw: no threshold (it switched off at ~23 s)
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
     acc = np.zeros_like(img)
     for k in range(taps):
@@ -667,6 +701,42 @@ def blur_offsets(t, W, H):
     if n == 1: return [0.0]
     return list(np.linspace(-0.25, 0.25, n)/TL.FPS)
 
+# ------------------------------------------------------------------ raw delivery
+def sky_mask(t, W, H, ss=2):
+    """1 where the pixel sees space (anti-aliased), from the same camera"""
+    c = cam_at(t, W*ss, H*ss); d = c.rays(); C = c.pos
+    b = d@C; disc = b*b-(C@C-R_E**2)
+    m = ~((disc > 0) & (b < 0))
+    return cv2.resize(m.astype(np.float32), (W, H), interpolation=cv2.INTER_AREA)
+
+def gfx_rgba(draw_fn, W, H):
+    """one graphic alone -> straight RGBA (difference matte: composited over black and over white)"""
+    import motion_gfx_v9 as M
+    cv = M.Canvas(W, H, "16x9"); draw_fn(cv)
+    if not (cv.ink[..., 3] > 1e-4).any() and not (cv.glow > 1e-4).any(): return None
+    b = cv.composite(np.zeros((H, W, 3), np.float32)); w = cv.composite(np.ones((H, W, 3), np.float32))
+    a = np.clip(1-(w-b), 0, 1).max(-1)
+    col = np.clip(b/np.maximum(a, 1e-4)[..., None], 0, 1)
+    return np.dstack([col, a])
+
+def raw_write(out, name, img, matte, t, W, H):
+    import grade_v9 as G, motion_gfx_v9 as M
+    for sub in ("flat", "grade", "json", "gfx_voli", "gfx_scia", "gfx_costa"): os.makedirs(os.path.join(out, sub), exist_ok=True)
+    w16 = lambda p, x: cv2.imwrite(p, cv2.cvtColor((np.clip(x, 0, 1)*65535+0.5).astype(np.uint16), cv2.COLOR_RGB2BGR))
+    w16(os.path.join(out, "flat", name+".png"), img)
+    x = G.grade(img, max(t, 0.0), matte)
+    m = sky_mask(t, W, H)[..., None]
+    x = x*(1-m)+img*m                                  # space keeps the plate's #0B1222 and stars, the same all through
+    w16(os.path.join(out, "grade", name+".png"), x)
+    cam = cam_at(t, W, H)
+    layers = {"gfx_voli": (lambda cv: (M.flight(cv, cam, M.ARC_SIN, t, *M.T["arc_sin"]), M.flight(cv, cam, M.ARC_CGK, t, *M.T["arc_cgk"]))) if 3.8 < t < 9.6 else None,
+              "gfx_scia": lambda cv: M.wake(cv, cam, t), "gfx_costa": lambda cv: M.coast_light(cv, cam, t)}
+    for k, fn in layers.items():
+        if fn is None: continue
+        r = gfx_rgba(fn, W, H)
+        if r is not None:
+            cv2.imwrite(os.path.join(out, k, name+".png"), cv2.cvtColor((r*255+0.5).astype(np.uint8), cv2.COLOR_RGBA2BGRA))
+
 # ------------------------------------------------------------------ main
 def main():
     ap = argparse.ArgumentParser()
@@ -680,13 +750,18 @@ def main():
     ap.add_argument("--workers", type=int, default=1, help="forked workers sharing the textures")
     ap.add_argument("--clean", action="store_true", help="with --final: no graphics")
     ap.add_argument("--clean_dir", default=None, help="with --final: also write the no-text version here")
+    ap.add_argument("--raw_out", default=None, help="raw delivery: flat/ and grade/ 16-bit, gfx layers RGBA, no fade")
     ap.add_argument("--raw_dir", default=None, help="with --final: also write the RAW plate (16-bit, no grade, no text, no grain) here")
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True)
     L = load_levels()
     if a.mode == "stills": jobs = [(None, t) for t in a.times]
     else:
         n0, n1 = int(round(a.from_*TL.FPS)), int(round(a.to*TL.FPS))
-        jobs = [(f, f/TL.FPS) for f in range(n0, n1, a.every)]
+        if a.raw_out:                  # raw: frame 0 is t = T_START
+            T0 = getattr(TL, "T_START", 0.0); n0, n1 = int(round((a.from_-T0)*TL.FPS)), int(round((a.to-T0)*TL.FPS))
+            jobs = [(f, T0+f/TL.FPS) for f in range(n0, n1, a.every)]
+        else:
+            jobs = [(f, f/TL.FPS) for f in range(n0, n1, a.every)]
     k, K = map(int, a.shard.split("/")); jobs = jobs[k::K]
     if a.workers > 1:
         # fork after loading: the textures are shared copy-on-write between the workers (memory ~ halved)
@@ -703,6 +778,7 @@ def main():
         name = f"t{t:06.2f}" if f is None else f"f{f:05d}"
         png = os.path.join(a.out, name+".png")
         if f is not None and os.path.exists(png): continue           # resume
+        if a.raw_out and f is not None and (os.path.exists(os.path.join(a.raw_out, "json", name+".json"))): continue
         t0 = time.time()
         offs = blur_offsets(t, a.w, a.h) if a.subframes else [0.0]
         acc = None; st = {}
@@ -715,6 +791,11 @@ def main():
         cp = TL.camera(t)
         rec = {"t": t, "frame": f, "camera": dict(zip(["lat", "lon", "range_m", "heading", "tilt", "roll"], cp)), "vfov": TL.VFOV,
                "alt_m": st.get("alt"), "subframes": len(offs), "sec": round(time.time()-t0, 1), "timing": {k: round(v, 2) for k, v in st.items() if k != "alt"}}
+        if a.raw_out:
+            raw_write(a.raw_out, name, img, matte, t, a.w, a.h)
+            json.dump(rec, open(os.path.join(a.raw_out, "json", name+".json"), "w"))
+            print(name, f"alt={rec['alt_m']/1000:.1f}km sub={len(offs)} {rec['sec']}s", rec["timing"], flush=True)
+            continue
         if a.final and a.raw_dir:
             os.makedirs(a.raw_dir, exist_ok=True)
             cv2.imwrite(os.path.join(a.raw_dir, name+".png"), cv2.cvtColor((np.clip(img, 0, 1)*65535+0.5).astype(np.uint16), cv2.COLOR_RGB2BGR))

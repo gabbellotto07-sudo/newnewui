@@ -1,0 +1,32 @@
+Satellite imagery
+Contains modified Copernicus Sentinel data (2019, 2023, 2024, 2025, 2026), processed by ESA
+© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021)
+processed by ESA WorldCover consortium (CC BY 4.0)
+
+Clouds over the region: Himawari-8 AHI, 29 July 2019 03:20 UTC
+Japan Meteorological Agency (JMA), via NOAA Open Data Dissemination
+
+Terrain
+Produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018
+provided under COPERNICUS by the European Union and ESA; all rights reserved
+Bathymetry: AWS Terrain Tiles — GEBCO, ETOPO1 (NOAA), SRTM (NASA/USGS)
+
+Stars: Yale Bright Star Catalogue, 5th ed. (Hoffleit & Warren), via d3-celestial (BSD-3-Clause)
+
+Seliu Island: land August 2026, sea 29 July 2019
+Belitung: land June–September 2026, sea 29 July 2019, clouds 29 July 2019
+
+Sound effects
+Mixkit (Mixkit Sound Effects Free License)
+
+Typeface
+Jost by Indestructible Type (SIL Open Font License 1.1)
+
+
+--- Note per il montaggio (non vanno a schermo) ---
+- Se l'apertura viene usata da sola (teaser, social), serve una riga di credito anche lì:
+  "Contains modified Copernicus Sentinel data 2019–2026 · Copernicus DEM · ESA WorldCover 2021 · Himawari-8 (JMA)"
+- Himawari-8 (JMA via NOAA): DA VERIFICARE i termini d'uso commerciale e la formula di credito esatta richiesta da JMA.
+- Mixkit: licenza da verificare prima della pubblicazione.
+- La musica scelta va aggiunta qui con titolo, autore e licenza.
+- Il materiale raw non contiene scritte: testi e logo sono del montaggio.
