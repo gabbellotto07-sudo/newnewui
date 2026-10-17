@@ -77,7 +77,10 @@ Le colonne sono `frame`, `time_s`, poi per ogni luogo `_x`, `_y` (px su 1920×10
    - cumuli Sentinel-2: disegnati in volume solo dove sono più grandi di un pixel. Quando sono più piccoli del pixel resta solo un velo debole e morbido: niente macchie né strisce "di neve";
    - solo nuvole reali, nessuna aggiunta.
 4. **Fiocchi ai bordi del quadro su Belitung:** erano cumuli lontani disegnati come cupole sotto la risoluzione del pixel. Spariscono con il punto 3.
-5. **Belitung (8–17 s):** foschia ridotta del 40 %, velo blu-viola tolto dal grade, contrasto naturale.
+5. **Belitung (8–17 s), coerente con il globo:**
+   - **Colore:** visti da lontano, i riquadri più dettagliati (Belitung a 15 m, la regione a 100 m) prendono i toni a grande scala del globo, con la catena di tarature LG ← L0 ← L1 ← LM ← L2. Passano ai loro colori veri solo avvicinandosi (dettaglio a terra da 300 a 25 m per pixel), quindi in modo continuo.
+   - **Nitidezza:** verso i bordi dei riquadri il dettaglio scende fino a quello del livello più grossolano: nessun quadrato in colore né in nitidezza.
+   - **Luminosità:** il mare intorno a Belitung non si scurisce più (stessa luminosità media da 12,5 a 15,5 s). Il velo blu-viola è tolto solo in parte, per non spegnere il blu.
 6. **Cielo:** nero-blu #0B1222 uguale in tutto il video. Le stelle reali (Yale Bright Star Catalogue, magnitudine < 4, posizioni del 29-07-2019 03:20 UTC) restano sempre, discrete. Nella versione a colori il cielo non viene toccato dal grade.
 7. **Ingresso della Terra:** 3 s in più all'inizio. La camera parte guardando sopra la Terra e si abbassa con una curva morbida, senza accelerazioni brusche, fino al primo fotogramma della vecchia apertura.
 

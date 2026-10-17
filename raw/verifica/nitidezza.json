@@ -5,7 +5,7 @@
    "t": -1.84,
    "cell": "r3c1",
    "jump_pct": 1162.2,
-   "trend_pct": 30.7
+   "trend_pct": 30.5
   },
   {
    "t": -1.44,
@@ -53,7 +53,7 @@
    "t": -1.56,
    "cell": "r3c3",
    "jump_pct": 438.2,
-   "trend_pct": 58.2
+   "trend_pct": 58.5
   },
   {
    "t": -2.28,
@@ -71,7 +71,7 @@
    "t": -1.36,
    "cell": "r2c1",
    "jump_pct": 375.0,
-   "trend_pct": 46.1
+   "trend_pct": 46.3
   }
  ],
  "max_change_centre_pct": 324.5
