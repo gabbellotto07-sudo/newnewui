@@ -111,24 +111,54 @@ def cloud_domes(a, px):
     return cv2.GaussianBlur(h, (0, 0), 0.8)
 
 COARSER = {"L0": "LG", "L1": "L0", "LM": "L1", "L2": "LM"}
+CORR = {}                     # name -> (log colour correction map (n, n, 3), half, px of the coarser level)
+def _corr_at(name, x, y):
+    lc, half, _ = CORR[name]; n = lc.shape[0]
+    from scipy.ndimage import map_coordinates
+    rr = (half-y)/(2*half)*n-0.5; cc = (x+half)/(2*half)*n-0.5
+    return np.stack([map_coordinates(lc[..., c], [rr, cc], order=1, mode="nearest") for c in range(3)], -1)
+
+def _interior(name, x, y, half):
+    """0 at the level's border -> 1 well inside (where it no longer meets the coarser level)"""
+    if name == "L2": return np.clip((30000-np.hypot(x, y))/20000, 0, 1)
+    q = np.maximum(np.abs(x), np.abs(y))/half
+    e = np.clip((1-q)/0.30, 0, 1); return e*e*(3-2*e)
+
+def level_rgb(L, name, x, y, fp, m, bias=-0.5):
+    """raw v2: one coherent globe. A finer level (Belitung LM, the L1/L2 squares) takes the large-scale colour of
+    the globe seen from afar (matched through the chain LG <- L0 <- L1 <- LM <- L2) and fades to its own true
+    colours only when the camera is close (footprint 300 -> 25 m); toward its border its detail also fades to the
+    coarser level's resolution. So no square shows, in colour or in sharpness."""
+    lv = L[name]
+    if name not in CORR:
+        return lv["rgb"].sample(x, y, fp, mask=m, bias=bias)
+    xs, ys, fs = x[m], y[m], fp[m]
+    e = _interior(name, xs, ys, lv["half"])
+    cpx = CORR[name][2]
+    fmin = np.exp((1-e)*np.log(cpx)+e*np.log(lv["px"]))
+    fpe = fp.copy(); fpe[m] = np.maximum(fs, fmin)
+    out = lv["rgb"].sample(x, y, fpe, mask=m, bias=bias)
+    kf = np.clip((np.log2(np.maximum(fs, 1e-3))-np.log2(25.0))/(np.log2(300.0)-np.log2(25.0)), 0, 1)
+    k = np.maximum(kf, 1-e)
+    out[m] *= np.exp(_corr_at(name, xs, ys)*k[:, None])
+    return out
+
 def harmonize(name, rgb, half, px, L):
-    """raw: the finer level's large-scale colour is matched to the coarser level's toward its own border (outer
-    45 %), so where the two meet nothing changes in colour; the interior and all the fine detail are untouched"""
+    """raw v2: store (do not bake) the full large-scale colour correction of this level toward the coarser level's
+    effective (already corrected) appearance; applied at render time by level_rgb"""
     cn = COARSER.get(name)
     rgb = rgb.astype(np.float32, copy=False)
     if cn not in L: return rgb
     n = 192; g = ((np.arange(n)+0.5)/n*2-1)*half
     X, Y = np.meshgrid(g, -g)
     c = L[cn]["rgb"].sample(X, Y, np.full(X.shape, 2*half/n, np.float32))
+    if cn in CORR: c = c*np.exp(_corr_at(cn, X.ravel(), Y.ravel()).reshape(n, n, 3))
     f = cv2.resize(rgb, (n, n), interpolation=cv2.INTER_AREA)
     lc = np.log(np.maximum(c, 2e-3))-np.log(np.maximum(f, 2e-3))
-    lc = np.clip(cv2.GaussianBlur(lc.astype(np.float32), (0, 0), 3.0), -0.35, 0.35)
-    e = np.maximum(np.abs(X), np.abs(Y))/half
-    k = np.clip((e-0.55)/0.35, 0, 1); k = (k*k*(3-2*k)).astype(np.float32)
-    corr = np.exp(lc*k[..., None]).astype(np.float32)
-    big = cv2.resize(corr, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_CUBIC)
-    print("harmonize", name, "to", cn, "max step %.1f %%" % (100*float(np.abs(np.expm1(lc*k[..., None])).max())), flush=True)
-    rgb *= big
+    sig = float(np.clip(5000/(2*half/n), 2, 12))
+    lc = np.clip(cv2.GaussianBlur(lc.astype(np.float32), (0, 0), sig), -0.6, 0.6)
+    CORR[name] = (lc, half, L[cn]["px"])
+    print("harmonize", name, "to", cn, "mean step %.1f %%" % (100*float(np.abs(np.expm1(lc)).mean())), flush=True)
     return rgb
 
 LEVEL_FILES = {"LG": "LG_tex.npy", "L0": "L0_tex.npy", "L1": "L1_tex.npy", "LM": "LM_tex.npy", "L2": "L2_comp.npy"}
@@ -187,7 +217,7 @@ def level_weights(L, x, y, fp):
             W[name] = rem; break
         ew = lv["rgb"].edge(x, y)
         if name == "L2": ew = np.minimum(ew, np.clip((30000-np.hypot(x, y))/14000, 0, 1))
-        if name == "LM": ew = lv["rgb"].edge(x, y, feather=0.07)
+        if name == "LM": ew = lv["rgb"].edge(x, y, feather=0.20)
         # raw: no footprint threshold any more (it popped at ~14 s): every pixel samples the finest level that
         # covers it, mip-mapped trilinearly; levels only meet spatially, at their feathered borders, where the
         # finer level's colours are matched to the coarser one at load time (harmonize)
@@ -546,7 +576,7 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
     for name, w in Wl.items():
         m = (w > 1e-4) & hit
         if m.any():
-            col += L[name]["rgb"].sample(x, y, fp, mask=m, bias=-0.5)*w[..., None]; wsum += w
+            col += level_rgb(L, name, x, y, fp, m)*w[..., None]; wsum += w
     col /= np.maximum(wsum, 1e-6)[..., None]
     landw, lws = sample_field(L, "land", x, y, fp, Wl)
     landw = np.where(lws > 1e-3, landw/np.maximum(lws, 1e-6), 0)
@@ -561,7 +591,7 @@ def render_frame(t, L, W, H, ss=1.25, cam=None, want_matte=False, stats=None):
             for name, w in Wl.items():
                 m = (w > 1e-4) & hit & (wsoft > 0.01)
                 if m.any():
-                    c2 += L[name]["rgb"].sample(x, y, fp, mask=m, bias=2.2)*w[..., None]; ws2 += w*m
+                    c2 += level_rgb(L, name, x, y, fp, m, bias=2.2)*w[..., None]; ws2 += w*m
             c2 /= np.maximum(ws2, 1e-6)[..., None]
             col = col*(1-wsoft[..., None])+c2*wsoft[..., None]
     col = bright_knee(col, landw)

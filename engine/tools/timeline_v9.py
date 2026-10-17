@@ -82,7 +82,7 @@ def warmth(t):          # 0 = cold orbit, 1 = warm arrival: drives grade and atm
 
 def haze(t):            # ground haze multiplier: full in orbit (the blue planet), thinner in the descent
     # raw: Belitung clearer (less blue-violet veil) between 8 and 17 s, back to v9 for the arrival
-    return 1.0-0.45*ramp(t, 5.0, 10.0)-0.40*ramp(t, 8.0, 11.0)*(1-ramp(t, 15.5, 18.5))+0.15*ramp(t, 15.0, 19.0)
+    return 1.0-0.45*ramp(t, 5.0, 10.0)-0.10*ramp(t, 8.0, 11.0)*(1-ramp(t, 15.5, 18.5))+0.15*ramp(t, 15.0, 19.0)
 
 def look_up(t):         # raw: before t=0 the camera looks above the Earth and tilts down onto it (deg, eased,
     if t >= 0: return 0.0          # zero speed and acceleration at both ends: no whip, lands on the old frame 0)
