@@ -167,6 +167,7 @@ def harmonize(name, rgb, half, px, L):
     """raw v2: store (do not bake) the full large-scale colour correction of this level toward the coarser level's
     effective (already corrected) appearance; applied at render time by level_rgb"""
     cn = COARSER.get(name)
+    while cn is not None and cn not in L: cn = COARSER.get(cn)
     rgb = rgb.astype(np.float32, copy=False)
     if cn not in L: return rgb
     n = 192; g = ((np.arange(n)+0.5)/n*2-1)*half
@@ -185,6 +186,8 @@ LEVEL_FILES = {"LG": "LG_tex.npy", "L0": "L0_tex.npy", "L1": "L1_tex.npy", "LM":
 RGB_SCALE = 65535/0.8
 
 def load_levels(names=("LG", "L0", "L1", "LM", "L2"), clouds=True, relief=True):
+    if os.environ.get("SELIU_LEVELS"):          # e.g. LG,L0,L1,L2: Belitung from the same source as the region
+        names = tuple(n for n in names if n in os.environ["SELIU_LEVELS"].split(","))
     L = {}
     for name, half, px in LEVELS:
         if name not in names or not os.path.exists(D(LEVEL_FILES[name])): continue
